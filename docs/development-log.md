@@ -69,3 +69,37 @@ max_abs_diff: 1.86265e-08
 standard_attention_ms: 6.64424
 flash_attention_tiled_ms: 3.11781
 ```
+
+## 2026-06-25 — Local oneDNN package extraction + smoke test
+
+### Done
+
+- `sudo` elevation is unavailable from this Feishu runtime, so oneDNN was installed project-locally without using the provided password.
+- Downloaded Ubuntu packages with `apt-get download`:
+  - `libdnnl-dev=3.1.1-2`
+  - `libdnnl3=3.1.1-2`
+- Extracted them under `third_party/onednn-local` using `dpkg-deb -x`.
+- Added `cmake/FindLocalDnnl.cmake` to find either project-local or system oneDNN.
+- Added optional CMake flag `FLASHONE_ENABLE_ONEDNN`.
+- Added `flashone_dnnl_smoke`, a oneDNN matmul runtime smoke test.
+
+### Verification
+
+```text
+PYTHONPATH=python python3 -m pytest -q tests/python
+10 passed in 0.09s
+
+cmake -S . -B build -DFLASHONE_ENABLE_ONEDNN=ON
+cmake --build build -j
+ctest --test-dir build --output-on-failure
+100% tests passed, 0 tests failed out of 3
+
+./build/flashone_dnnl_smoke
+oneDNN smoke matmul max_diff=0
+oneDNN runtime version=3.1.1
+
+./build/flashone_bench
+max_abs_diff: 1.86265e-08
+standard_attention_ms: 5.68878
+flash_attention_tiled_ms: 3.01036
+```

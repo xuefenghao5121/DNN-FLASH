@@ -7,13 +7,9 @@ Checked on 2026-06-25:
 - C++ compiler: GCC 13.3.0
 - CMake: 4.3.1
 - TBB headers are present under `/usr/include/oneapi/tbb`
-- oneDNN development headers/libraries were **not** found:
-  - no `dnnl.hpp`
-  - no `dnnl.h`
-  - no `libdnnl.so`
-  - no `pkg-config dnnl`
+- System oneDNN development headers/libraries were not installed, but Ubuntu packages were downloaded and extracted locally under `third_party/onednn-local`. The optional CMake path now builds `flashone_dnnl_smoke` and verifies oneDNN matmul at runtime.
 
-So the current repository keeps oneDNN integration behind a backend seam and continues to build without oneDNN. The next machine/environment step is installing or building oneDNN with experimental ukernel/BRGEMM support.
+The repository still keeps oneDNN integration behind a backend seam so the reference path continues to build when oneDNN is unavailable.
 
 ## Why a backend seam now
 
@@ -71,11 +67,10 @@ For each query tile and key tile:
    - Reference today: loop over values
    - oneDNN target: BRGEMM batch-reduce style accumulation
 
+## Current CMake integration
+
+`FLASHONE_ENABLE_ONEDNN` is available and defaults to `ON`. If `dnnl.hpp`/`dnnl.h` plus `libdnnl` are found, FlashOne builds `flashone_dnnl_smoke`; otherwise it prints a status message and skips that target.
+
 ## Immediate next coding step
 
-Add a build-time optional `FLASHONE_ENABLE_ONEDNN` flag:
-
-- If `dnnl.hpp` and `libdnnl` are available, compile a oneDNN smoke target.
-- If unavailable, skip the target and keep all reference tests green.
-
-This avoids blocking algorithm development on local library availability.
+Introduce a `TileKernel` abstraction for QK and PV tiles, then implement a first oneDNN-backed dense matmul tile smoke before attempting full online-softmax integration.

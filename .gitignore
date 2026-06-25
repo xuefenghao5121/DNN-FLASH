@@ -10,3 +10,5 @@ data/*
 !data/.gitkeep
 experiments/outputs/
 .cache/
+third_party/debs/
+third_party/onednn-local/usr/share/doc/
