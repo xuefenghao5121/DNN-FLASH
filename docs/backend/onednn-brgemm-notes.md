@@ -74,3 +74,34 @@ For each query tile and key tile:
 ## Immediate next coding step
 
 Introduce a `TileKernel` abstraction for QK and PV tiles, then implement a first oneDNN-backed dense matmul tile smoke before attempting full online-softmax integration.
+
+## TileKernel seam — 2026-06-26
+
+A first `TileKernel` seam now exists:
+
+```cpp
+enum class TileKernelKind {
+    Reference,
+    OneDnn,
+};
+
+std::vector<float> matmul_tile(TileKernelKind kind,
+                               const std::vector<float>& a,
+                               const std::vector<float>& b,
+                               const MatmulShape& shape);
+```
+
+Semantics:
+
+- Row-major `C[M,N] = A[M,K] x B[K,N]`.
+- Reference implementation is always available.
+- oneDNN implementation is compiled when `FLASHONE_HAS_ONEDNN` is defined by CMake.
+
+Current oneDNN implementation uses `dnnl::matmul`. This is not the final BRGEMM ukernel path, but it proves that QK/PV tile multiplication can be routed through oneDNN behind a stable interface.
+
+Next replacement step:
+
+1. Introduce a tile policy that extracts Q/K/V tile views without copying where possible.
+2. Replace the QK dot loop in `flash_attention_tiled` with `matmul_tile` for multi-row query tiles.
+3. Keep online softmax in FlashOne code between QK and PV.
+4. Replace PV accumulation with `matmul_tile` once the weighted-probability tile is materialized in a small local buffer.

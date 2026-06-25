@@ -103,3 +103,38 @@ max_abs_diff: 1.86265e-08
 standard_attention_ms: 5.68878
 flash_attention_tiled_ms: 3.01036
 ```
+
+## 2026-06-26 — TileKernel seam and oneDNN matmul tile
+
+### Done
+
+- Added `include/flashone/tile_kernel.hpp` and `src/flashone/tile_kernel.cpp`.
+- Added `TileKernelKind::{Reference, OneDnn}`.
+- Added row-major `matmul_tile(...)` seam for `C[M,N] = A[M,K] x B[K,N]`.
+- Added oneDNN-backed implementation in `src/flashone/onednn_tile_kernel.cpp`.
+- CMake now links oneDNN into `flashone_core` when available and defines `FLASHONE_HAS_ONEDNN`.
+- Added `tests/cpp/test_tile_kernel.cpp` to compare oneDNN tile output against reference output.
+
+### Verification
+
+```text
+PYTHONPATH=python python3 -m pytest -q tests/python
+10 passed in 0.09s
+
+cmake -S . -B build -DFLASHONE_ENABLE_ONEDNN=ON
+cmake --build build -j
+ctest --test-dir build --output-on-failure
+100% tests passed, 0 tests failed out of 4
+
+./build/flashone_tile_kernel_tests
+flashone tile kernel tests passed
+
+./build/flashone_dnnl_smoke
+oneDNN smoke matmul max_diff=0
+oneDNN runtime version=3.1.1
+
+./build/flashone_bench
+max_abs_diff: 1.86265e-08
+standard_attention_ms: 5.99141
+flash_attention_tiled_ms: 2.99639
+```

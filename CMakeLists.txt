@@ -12,6 +12,7 @@ list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
 add_library(flashone_core
   src/flashone/attention.cpp
   src/flashone/backend.cpp
+  src/flashone/tile_kernel.cpp
 )
 target_include_directories(flashone_core PUBLIC include)
 target_compile_options(flashone_core PRIVATE -Wall -Wextra -Wpedantic)
@@ -25,12 +26,19 @@ target_link_libraries(flashone_cpp_tests PRIVATE flashone_core)
 add_executable(flashone_backend_tests tests/cpp/test_backend.cpp)
 target_link_libraries(flashone_backend_tests PRIVATE flashone_core)
 
+add_executable(flashone_tile_kernel_tests tests/cpp/test_tile_kernel.cpp)
+target_link_libraries(flashone_tile_kernel_tests PRIVATE flashone_core)
+
 add_executable(flashone_bench benchmarks/bench_attention.cpp)
 target_link_libraries(flashone_bench PRIVATE flashone_core)
 
 if(FLASHONE_ENABLE_ONEDNN)
   find_package(LocalDnnl QUIET)
   if(DNNL_FOUND)
+    target_sources(flashone_core PRIVATE src/flashone/onednn_tile_kernel.cpp)
+    target_compile_definitions(flashone_core PUBLIC FLASHONE_HAS_ONEDNN=1)
+    target_link_libraries(flashone_core PUBLIC dnnl::dnnl)
+
     add_executable(flashone_dnnl_smoke tests/cpp/test_dnnl_smoke.cpp)
     target_link_libraries(flashone_dnnl_smoke PRIVATE dnnl::dnnl)
     set_target_properties(flashone_dnnl_smoke PROPERTIES
@@ -44,6 +52,7 @@ include(CTest)
 if(BUILD_TESTING)
   add_test(NAME flashone_cpp_tests COMMAND flashone_cpp_tests)
   add_test(NAME flashone_backend_tests COMMAND flashone_backend_tests)
+  add_test(NAME flashone_tile_kernel_tests COMMAND flashone_tile_kernel_tests)
   if(TARGET flashone_dnnl_smoke)
     add_test(NAME flashone_dnnl_smoke COMMAND flashone_dnnl_smoke)
   endif()
