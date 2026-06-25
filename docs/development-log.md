@@ -36,3 +36,36 @@ flash_attention_tiled_ms: 3.44712
 ### Notes
 
 The benchmark is still reference C++ loops, not oneDNN/AMX. The current value is correctness and harness validation, not final performance.
+
+## 2026-06-25 — Backend seam + score modifiers
+
+### Done
+
+- Checked local oneDNN availability. oneDNN headers/libraries are not installed on this machine.
+- Added backend dispatch seam:
+  - `AttentionBackendKind::StandardReference`
+  - `AttentionBackendKind::FlashTiledReference`
+  - `run_attention(...)`
+- Added `BlockMask` interface for block-level masking.
+- Added `ScoreBiasFn` interface to represent ALiBi/additive score modifiers.
+- Updated C++ standard and tiled implementations to share causal/block-mask/bias semantics.
+- Updated Python golden reference with block mask and score bias support.
+- Added C++ backend/BlockMask/bias tests and Python score modifier tests.
+- Added oneDNN BRGEMM integration notes and local environment snapshot.
+
+### Verification
+
+```text
+PYTHONPATH=python python3 -m pytest -q tests/python
+10 passed in 0.09s
+
+cmake -S . -B build
+cmake --build build -j
+ctest --test-dir build --output-on-failure
+100% tests passed, 0 tests failed out of 2
+
+./build/flashone_bench
+max_abs_diff: 1.86265e-08
+standard_attention_ms: 6.64424
+flash_attention_tiled_ms: 3.11781
+```

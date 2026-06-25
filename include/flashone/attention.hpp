@@ -1,6 +1,8 @@
 #pragma once
 
 #include <cstddef>
+#include <cstdint>
+#include <functional>
 #include <vector>
 
 namespace flashone {
@@ -12,10 +14,25 @@ struct AttentionShape {
     std::size_t value_dim;
 };
 
+struct BlockMask {
+    std::size_t query_block_size = 1;
+    std::size_t key_block_size = 1;
+    std::size_t query_blocks = 0;
+    std::size_t key_blocks = 0;
+    // Row-major [query_blocks, key_blocks]. Non-zero means the block is allowed.
+    std::vector<std::uint8_t> allowed;
+
+    bool allows(std::size_t query_index, std::size_t key_index) const;
+};
+
+using ScoreBiasFn = std::function<float(std::size_t query_index, std::size_t key_index)>;
+
 struct AttentionOptions {
     float scale = 1.0f;
     bool causal = false;
     std::size_t key_block_size = 64;
+    const BlockMask* block_mask = nullptr;
+    ScoreBiasFn score_bias = nullptr;
 };
 
 std::vector<float> standard_attention(const std::vector<float>& q,

@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <limits>
 #include <stdexcept>
 
@@ -45,10 +46,38 @@ float dot_row(const std::vector<float>& a,
 }
 
 bool masked_out(std::size_t query_index, std::size_t key_index, const AttentionOptions& options) {
-    return options.causal && key_index > query_index;
+    if (options.causal && key_index > query_index) {
+        return true;
+    }
+    if (options.block_mask != nullptr && !options.block_mask->allows(query_index, key_index)) {
+        return true;
+    }
+    return false;
+}
+
+float score_bias(std::size_t query_index, std::size_t key_index, const AttentionOptions& options) {
+    return options.score_bias ? options.score_bias(query_index, key_index) : 0.0f;
 }
 
 }  // namespace
+
+bool BlockMask::allows(std::size_t query_index, std::size_t key_index) const {
+    if (query_block_size == 0 || key_block_size == 0) {
+        throw std::invalid_argument("BlockMask block sizes must be non-zero");
+    }
+    if (query_blocks == 0 || key_blocks == 0) {
+        throw std::invalid_argument("BlockMask dimensions must be non-zero");
+    }
+    if (allowed.size() != query_blocks * key_blocks) {
+        throw std::invalid_argument("BlockMask allowed bitmap size does not match dimensions");
+    }
+    const auto qb = query_index / query_block_size;
+    const auto kb = key_index / key_block_size;
+    if (qb >= query_blocks || kb >= key_blocks) {
+        return false;
+    }
+    return allowed[qb * key_blocks + kb] != 0;
+}
 
 std::vector<float> standard_attention(const std::vector<float>& q,
                                       const std::vector<float>& k,
@@ -68,7 +97,8 @@ std::vector<float> standard_attention(const std::vector<float>& q,
                 scores[kj] = -std::numeric_limits<float>::infinity();
                 continue;
             }
-            scores[kj] = dot_row(q, qi, k, kj, shape.head_dim) * options.scale;
+            scores[kj] = dot_row(q, qi, k, kj, shape.head_dim) * options.scale +
+                         score_bias(qi, kj, options);
             row_max = std::max(row_max, scores[kj]);
             has_valid_key = true;
         }
@@ -134,7 +164,8 @@ std::vector<float> flash_attention_tiled(const std::vector<float>& q,
                     block_scores[kj - block_begin] = -std::numeric_limits<float>::infinity();
                     continue;
                 }
-                const float score = dot_row(q, qi, k, kj, shape.head_dim) * options.scale;
+                const float score = dot_row(q, qi, k, kj, shape.head_dim) * options.scale +
+                                    score_bias(qi, kj, options);
                 block_scores[kj - block_begin] = score;
                 block_max = std::max(block_max, score);
                 has_valid_key = true;
