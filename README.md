@@ -1,38 +1,55 @@
-# Paper Prototype Dev
+# FlashOne
 
-本地论文创新点原型开发项目骨架。
+**FlashOne = Flash Attention on oneDNN**
 
-## 目标
+FlashOne is a CPU-side FlexAttention prototype based on TensorFlow/XLA Custom Call and oneDNN-style BRGEMM tiling. The project starts with a standalone C++/Python reference implementation so the math, tiling policy, correctness tests, and benchmark harness can be validated before integrating TensorFlow, XLA, and oneDNN internals.
 
-- 将论文中的核心创新点拆成可验证的工程原型
-- 快速建立 baseline、实验脚本和测试闭环
-- 后续根据具体论文/方向补齐算法实现、数据集和评测指标
+## Goals
 
-## 目录结构
+- Build Flash-style tiled attention for CPU without materializing the full `N x N` score/probability matrix.
+- Validate online softmax recurrence and block-level mask skipping.
+- Prepare a bridge from XLA epilogues (`score_mod`) to oneDNN post-ops.
+- Target x64 AMX/AVX-512 first, then ARM SVE/Kunpeng 930.
 
-```text
-.
-├── docs/                 # 需求、设计、实验记录
-├── src/paper_prototype/  # Python 原型代码
-├── cpp/                  # C/C++ 原型或性能核心
-├── tests/                # 自动化测试
-├── scripts/              # 运行/构建脚本
-├── experiments/          # 实验配置和输出说明
-└── data/                 # 本地数据占位，不纳入 git
-```
+## Current milestone
 
-## 快速开始
+Month 1 / Week 1 scaffold:
+
+- C++ reference standard attention
+- C++ Flash-style tiled attention
+- Python/Numpy golden implementation
+- Correctness tests
+- Minimal benchmark harness
+- Architecture and requirements docs
+
+## Quick start
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -e .[dev]
+pip install -e '.[dev]'
 pytest -q
+cmake -S . -B build
+cmake --build build -j
+ctest --test-dir build --output-on-failure
+./build/flashone_bench
 ```
 
-## 下一步
+## Layout
 
-1. 明确项目名、论文/创新点、技术路线
-2. 在 `docs/requirements.md` 写验收指标
-3. 在 `docs/design.md` 写模块设计
-4. 实现 baseline + 最小可复现实验
+```text
+include/flashone/     Public C++ headers
+src/flashone/         C++ implementation
+python/flashone/      Python reference/golden code
+tests/cpp/            C++ tests
+tests/python/         Python tests
+benchmarks/           Benchmark entry points
+docs/                 Design, requirements, project plan
+```
+
+## Roadmap
+
+See `docs/project-plan.md` for the full two-phase plan:
+
+1. Phase 1: FlexAttention on CPU
+2. Phase 2: FlexInteraction for recommendation feature interaction

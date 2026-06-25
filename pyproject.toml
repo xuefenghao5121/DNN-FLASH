@@ -3,12 +3,14 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "paper-prototype-dev"
+name = "flashone"
 version = "0.1.0"
-description = "Local research paper prototype development scaffold"
+description = "CPU FlexAttention prototype based on Flash-style tiling and oneDNN-oriented design"
 readme = "README.md"
 requires-python = ">=3.10"
-dependencies = []
+dependencies = [
+  "numpy>=1.24",
+]
 
 [project.optional-dependencies]
 dev = [
@@ -17,12 +19,12 @@ dev = [
 ]
 
 [tool.setuptools.packages.find]
-where = ["src"]
+where = ["python"]
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
-pythonpath = ["src"]
+testpaths = ["tests/python"]
+pythonpath = ["python"]
 
 [tool.ruff]
 line-length = 100
-src = ["src", "tests"]
+src = ["python", "tests/python"]

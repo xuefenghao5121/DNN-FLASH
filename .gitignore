@@ -9,3 +9,4 @@ dist/
 data/*
 !data/.gitkeep
 experiments/outputs/
+.cache/

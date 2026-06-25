@@ -1,13 +1,22 @@
-.PHONY: test lint run clean
+.PHONY: test test-python test-cpp build bench lint clean
 
-test:
-	python3 -m pytest -q
+build:
+	cmake -S . -B build
+	cmake --build build -j
+
+test-python:
+	PYTHONPATH=python python3 -m pytest -q tests/python
+
+test-cpp: build
+	ctest --test-dir build --output-on-failure
+
+test: test-python test-cpp
+
+bench: build
+	./build/flashone_bench
 
 lint:
-	python3 -m ruff check src tests
-
-run:
-	PYTHONPATH=src python3 -m paper_prototype.main
+	python3 -m ruff check python tests/python
 
 clean:
-	rm -rf .pytest_cache .ruff_cache build dist *.egg-info src/*.egg-info
+	rm -rf build .pytest_cache .ruff_cache python/*.egg-info *.egg-info
