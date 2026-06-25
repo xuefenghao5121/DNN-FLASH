@@ -219,3 +219,13 @@ flash_attention_qk_pv_tile_ref_ms: 4.37721
 flash_attention_q_tile_onednn_ms: 2.08872
 flash_attention_qk_pv_onednn_ms: 0.876912
 ```
+## 2026-06-26 TensorFlow Custom Op MVP
+
+- Added a TensorFlow CPU custom op MVP for FlashOne attention: `tensorflow_ops/flashone_attention_op.cc`.
+- Added batched/head wrapper around the standalone core: `include/flashone/batched_attention.hpp` and `src/flashone/batched_attention.cpp`. The wrapper accepts flat row-major tensors with shapes `Q=[B,H,M,D]`, `K=[B,H,N,D]`, `V=[B,H,N,Dv]`, `O=[B,H,M,Dv]`.
+- Added Python loader package: `python/flashone_tf/`, exposing `flashone_attention(...)` via `tf.load_op_library("build/flashone_tf_attention.so")`.
+- CMake now builds `flashone_tf_attention.so` when TensorFlow compile/link flags are available. `flashone_core` is compiled as PIC so it can be linked into the custom op shared object.
+- Current op attributes: `causal`, `query_block_size`, `key_block_size`, `use_onednn`. The MVP is CPU-only, inference-only, float32-only, and does not yet register gradients or XLA lowering.
+- Verified local TensorFlow environment: TensorFlow `2.21.0`; custom op links to local oneDNN `third_party/onednn-local/usr/lib/x86_64-linux-gnu/libdnnl.so.3` (`3.1.1`).
+- Validation passed: `ctest --test-dir build --output-on-failure` -> 6/6 passed; `PYTHONPATH=python python3 -m pytest -q tests/python tests/tensorflow` -> 11 passed.
+

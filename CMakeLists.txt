@@ -7,14 +7,17 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 option(FLASHONE_ENABLE_NATIVE "Enable -march=native for local benchmarking" OFF)
 option(FLASHONE_ENABLE_ONEDNN "Build optional oneDNN smoke/integration targets" ON)
+option(FLASHONE_BUILD_TENSORFLOW_OP "Build TensorFlow custom op shared library" ON)
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
 
 add_library(flashone_core
   src/flashone/attention.cpp
   src/flashone/backend.cpp
   src/flashone/tile_kernel.cpp
+  src/flashone/batched_attention.cpp
 )
 target_include_directories(flashone_core PUBLIC include)
+set_target_properties(flashone_core PROPERTIES POSITION_INDEPENDENT_CODE ON)
 target_compile_options(flashone_core PRIVATE -Wall -Wextra -Wpedantic)
 if(FLASHONE_ENABLE_NATIVE)
   target_compile_options(flashone_core PRIVATE -march=native)
@@ -51,6 +54,34 @@ if(FLASHONE_ENABLE_ONEDNN)
       BUILD_RPATH "${CMAKE_SOURCE_DIR}/third_party/onednn-local/usr/lib/x86_64-linux-gnu")
   else()
     message(STATUS "oneDNN not found; skipping flashone_dnnl_smoke")
+  endif()
+endif()
+
+
+if(FLASHONE_BUILD_TENSORFLOW_OP)
+  execute_process(
+    COMMAND python3 -c "import tensorflow as tf; print(' '.join(tf.sysconfig.get_compile_flags()))"
+    OUTPUT_VARIABLE TF_COMPILE_FLAGS_RAW
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+    ERROR_QUIET)
+  execute_process(
+    COMMAND python3 -c "import tensorflow as tf; print(' '.join(tf.sysconfig.get_link_flags()))"
+    OUTPUT_VARIABLE TF_LINK_FLAGS_RAW
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+    ERROR_QUIET)
+  if(TF_COMPILE_FLAGS_RAW AND TF_LINK_FLAGS_RAW)
+    separate_arguments(TF_COMPILE_FLAGS UNIX_COMMAND "${TF_COMPILE_FLAGS_RAW}")
+    separate_arguments(TF_LINK_FLAGS UNIX_COMMAND "${TF_LINK_FLAGS_RAW}")
+    add_library(flashone_tf_attention SHARED tensorflow_ops/flashone_attention_op.cc)
+    target_link_libraries(flashone_tf_attention PRIVATE flashone_core)
+    target_compile_options(flashone_tf_attention PRIVATE ${TF_COMPILE_FLAGS})
+    target_link_options(flashone_tf_attention PRIVATE ${TF_LINK_FLAGS})
+    set_target_properties(flashone_tf_attention PROPERTIES
+      PREFIX ""
+      OUTPUT_NAME "flashone_tf_attention"
+      BUILD_RPATH "${CMAKE_SOURCE_DIR}/third_party/onednn-local/usr/lib/x86_64-linux-gnu")
+  else()
+    message(STATUS "TensorFlow compile/link flags unavailable; skipping flashone_tf_attention")
   endif()
 endif()
 

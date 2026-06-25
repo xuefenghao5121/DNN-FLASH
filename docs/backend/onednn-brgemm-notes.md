@@ -184,3 +184,9 @@ Next steps:
 1. Add primitive/cache reuse inside oneDNN tile kernel keyed by `(M,N,K)`.
 2. Add reusable scratch buffers for Q/K/V/P tiles to reduce per-block allocation.
 3. Benchmark shape sweep: sequence length, head dim, value dim, block sizes.
+## TensorFlow Custom Op linkage note
+
+The first TensorFlow integration is a CPU custom op, not XLA lowering yet. The shared library target is `flashone_tf_attention.so`; it reuses `flashone_core` and links against the local oneDNN package extracted under `third_party/onednn-local`. At runtime, `ldd build/flashone_tf_attention.so` resolves `libdnnl.so.3` to `third_party/onednn-local/usr/lib/x86_64-linux-gnu/libdnnl.so.3`.
+
+This keeps the TensorFlow E2E path independent of system-wide oneDNN installation while the prototype still uses oneDNN `3.1.1` via `dnnl::matmul` for QK/PV tiles.
+
