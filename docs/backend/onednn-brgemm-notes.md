@@ -189,4 +189,9 @@ Next steps:
 The first TensorFlow integration is a CPU custom op, not XLA lowering yet. The shared library target is `flashone_tf_attention.so`; it reuses `flashone_core` and links against the local oneDNN package extracted under `third_party/onednn-local`. At runtime, `ldd build/flashone_tf_attention.so` resolves `libdnnl.so.3` to `third_party/onednn-local/usr/lib/x86_64-linux-gnu/libdnnl.so.3`.
 
 This keeps the TensorFlow E2E path independent of system-wide oneDNN installation while the prototype still uses oneDNN `3.1.1` via `dnnl::matmul` for QK/PV tiles.
+## oneDNN tile primitive cache
+
+The oneDNN tile matmul path now keeps a process-local cache keyed by `(M,N,K)`. The cache reuses the CPU engine, stream, memory descriptors, and `dnnl::matmul` primitive for repeated QK/PV tile shapes. This reduced the standalone `flash_attention_qk_pv_onednn_ms` microbenchmark for `M=N=128,K=D=64` from roughly `0.87ms` to `0.717696ms` in the current local run.
+
+This is still a coarse MVP cache: calls are serialized by a mutex, tile inputs are copied before reaching oneDNN, and TensorFlow Custom Op execution still allocates temporary vectors. It validates the primitive reuse direction but is not the final performance architecture.
 

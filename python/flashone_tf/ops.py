@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from functools import lru_cache
 from pathlib import Path
 
 import tensorflow as tf
@@ -9,11 +10,17 @@ def _default_op_path() -> Path:
     return Path(__file__).resolve().parents[2] / "build" / "flashone_tf_attention.so"
 
 
+@lru_cache(maxsize=None)
+def _load_flashone_op_cached(op_path: str):
+    path = Path(op_path)
+    if not path.exists():
+        raise FileNotFoundError(f"FlashOne TensorFlow op not found: {path}")
+    return tf.load_op_library(str(path))
+
+
 def load_flashone_op(path: str | Path | None = None):
     op_path = Path(path) if path is not None else _default_op_path()
-    if not op_path.exists():
-        raise FileNotFoundError(f"FlashOne TensorFlow op not found: {op_path}")
-    return tf.load_op_library(str(op_path))
+    return _load_flashone_op_cached(str(op_path.resolve()))
 
 
 def flashone_attention(

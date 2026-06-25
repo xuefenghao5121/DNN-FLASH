@@ -228,4 +228,15 @@ flash_attention_qk_pv_onednn_ms: 0.876912
 - Current op attributes: `causal`, `query_block_size`, `key_block_size`, `use_onednn`. The MVP is CPU-only, inference-only, float32-only, and does not yet register gradients or XLA lowering.
 - Verified local TensorFlow environment: TensorFlow `2.21.0`; custom op links to local oneDNN `third_party/onednn-local/usr/lib/x86_64-linux-gnu/libdnnl.so.3` (`3.1.1`).
 - Validation passed: `ctest --test-dir build --output-on-failure` -> 6/6 passed; `PYTHONPATH=python python3 -m pytest -q tests/python tests/tensorflow` -> 11 passed.
+## 2026-06-26 TensorFlow E2E mini benchmark
+
+- Added TensorFlow E2E benchmark harness: `benchmarks/tensorflow/bench_flashone_tf_e2e.py`. It compares TensorFlow materialized attention, FlashOne custom-op attention, and a minimal decoder block with QKV projection, attention, output projection, FFN, residuals, and layer norms.
+- Added E2E correctness test: `tests/tensorflow/test_flashone_tf_e2e.py`, verifying that FlashOne can replace the attention function inside the decoder block.
+- Added `tf.load_op_library` caching in `python/flashone_tf/ops.py`; without this, eager-mode benchmark timing included repeated op-library loading.
+- Added a simple oneDNN tile primitive cache in `src/flashone/onednn_tile_kernel.cpp`, keyed by `(M,N,K)`, so repeated QK/PV tile shapes reuse engine/stream/matmul primitive descriptors.
+- Validation passed: `ctest --test-dir build --output-on-failure` -> 6/6 passed; `PYTHONPATH=python:. python3 -m pytest -q tests/python tests/tensorflow` -> 12 passed.
+- C++ microbenchmark after cache: `flash_attention_qk_pv_onednn_ms: 0.717696` for `M=N=128,K=D=64`, vs previous about `0.87ms`; correctness still `max_abs_diff_qk_pv_onednn=1.86265e-08`.
+- Eager TensorFlow benchmark, `B=1,H=4,D=32,E=128,q_block=16,k_block=32`: seq64 FlashOne attention `1.565ms` vs TensorFlow attention `2.310ms`, decoder `6.705ms` vs `7.336ms`; seq128 FlashOne attention `2.704ms` vs TensorFlow attention `1.769ms`, decoder `10.805ms` vs `7.860ms`; seq256 FlashOne attention `9.353ms` vs TensorFlow attention `1.122ms`, decoder `15.173ms` vs `10.329ms`.
+- Graph-mode sanity (`--graph`) for seq128: TensorFlow attention `0.282851ms`, FlashOne attention `2.752409ms`; decoder `1.409489ms` vs `8.442781ms`. Current Custom Op is usable for E2E replacement but not competitive with TensorFlow graph execution yet.
+- Key bottleneck now appears to be Custom Op/kernel overhead plus internal tile copies and per-call allocations; next target should be direct Tensor-backed compute path and buffer reuse, before XLA lowering.
 
