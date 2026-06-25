@@ -178,3 +178,44 @@ flash_attention_tiled_ms: 3.01477
 flash_attention_q_tile_ref_ms: 3.76177
 flash_attention_q_tile_onednn_ms: 2.07142
 ```
+
+## 2026-06-26 — QK+PV tile attention uses oneDNN
+
+### Done
+
+- Extended `AttentionOptions` with `pv_tile_kernel`.
+- Added `flash_attention_qk_pv_tile(...)`.
+- The new path routes both:
+  - QK tile through `options.qk_tile_kernel`
+  - PV tile through `options.pv_tile_kernel`
+- Online softmax remains explicit in FlashOne code.
+- Added `tests/cpp/test_qk_pv_tile_attention.cpp`.
+- Updated benchmark to report QK+PV reference and QK+PV oneDNN variants.
+
+### Verification
+
+```text
+PYTHONPATH=python python3 -m pytest -q tests/python
+10 passed in 0.09s
+
+cmake -S . -B build -DFLASHONE_ENABLE_ONEDNN=ON
+cmake --build build -j
+ctest --test-dir build --output-on-failure
+100% tests passed, 0 tests failed out of 6
+
+./build/flashone_qk_pv_tile_attention_tests
+flashone QK/PV tile attention tests passed
+
+./build/flashone_bench
+max_abs_diff_row_tiled: 1.86265e-08
+max_abs_diff_q_tile: 1.86265e-08
+max_abs_diff_qk_pv_tile: 1.49012e-08
+max_abs_diff_q_tile_onednn: 1.67638e-08
+max_abs_diff_qk_pv_onednn: 1.86265e-08
+standard_attention_ms: 5.65542
+flash_attention_tiled_ms: 3.03975
+flash_attention_q_tile_ref_ms: 3.73509
+flash_attention_qk_pv_tile_ref_ms: 4.37721
+flash_attention_q_tile_onednn_ms: 2.08872
+flash_attention_qk_pv_onednn_ms: 0.876912
+```

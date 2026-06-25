@@ -142,3 +142,45 @@ Next step:
 
 - Add a PV tile path: materialize a small `P_tile[Qb,Kb]`, then use `matmul_tile(P_tile, V_tile)` for output accumulation.
 - After both QK and PV are routed through `TileKernel`, replace `dnnl::matmul` with lower-level BRGEMM/ukernel if the installed oneDNN version exposes the needed APIs.
+
+## QK + PV Tile Attention Pipeline — 2026-06-26
+
+`flash_attention_qk_pv_tile(...)` now routes both main matrix multiplications through `TileKernel`:
+
+```text
+Q_tile[Qb,H] x K_tile_T[H,Kb] -> score_tile[Qb,Kb]
+P_tile[Qb,Kb] x V_tile[Kb,D] -> pv_tile[Qb,D]
+```
+
+Pipeline:
+
+1. Compute raw QK score tile through `options.qk_tile_kernel`.
+2. Apply scale, causal mask, `BlockMask`, and `ScoreBiasFn`.
+3. Compute online-softmax local weights in `P_tile`, using the updated running max.
+4. Compute `P_tile x V_tile` through `options.pv_tile_kernel`.
+5. Rescale historical accumulator by `exp(old_max - new_max)` and add the PV tile.
+6. Update running denominator and final normalize at the end of all K blocks.
+
+This gives the first end-to-end FlashOne CPU pipeline where both QK and PV can use oneDNN while online softmax remains explicit in FlashOne code.
+
+Current local benchmark (`M=N=128,H=D=64,causal,key_block=32,query_block=16`):
+
+```text
+max_abs_diff_qk_pv_onednn: 1.86265e-08
+flash_attention_qk_pv_onednn_ms: 0.876912
+standard_attention_ms: 5.65542
+flash_attention_tiled_ms: 3.03975
+flash_attention_q_tile_onednn_ms: 2.08872
+```
+
+Interpretation:
+
+- QK-only oneDNN proves the first backend substitution point.
+- QK+PV oneDNN is much faster in this small benchmark because the expensive `weight * V` accumulation also leaves scalar loops.
+- The current implementation still copies/transposes tiles and creates oneDNN primitives per call; primitive caching and buffer reuse remain major next steps.
+
+Next steps:
+
+1. Add primitive/cache reuse inside oneDNN tile kernel keyed by `(M,N,K)`.
+2. Add reusable scratch buffers for Q/K/V/P tiles to reduce per-block allocation.
+3. Benchmark shape sweep: sequence length, head dim, value dim, block sizes.
