@@ -5,6 +5,8 @@
 #include <functional>
 #include <vector>
 
+#include "flashone/tile_kernel.hpp"
+
 namespace flashone {
 
 struct AttentionShape {
@@ -31,6 +33,8 @@ struct AttentionOptions {
     float scale = 1.0f;
     bool causal = false;
     std::size_t key_block_size = 64;
+    std::size_t query_block_size = 1;
+    TileKernelKind qk_tile_kernel = TileKernelKind::Reference;
     const BlockMask* block_mask = nullptr;
     ScoreBiasFn score_bias = nullptr;
 };
@@ -42,6 +46,12 @@ std::vector<float> standard_attention(const std::vector<float>& q,
                                       const AttentionOptions& options);
 
 std::vector<float> flash_attention_tiled(const std::vector<float>& q,
+                                         const std::vector<float>& k,
+                                         const std::vector<float>& v,
+                                         const AttentionShape& shape,
+                                         const AttentionOptions& options);
+
+std::vector<float> flash_attention_q_tile(const std::vector<float>& q,
                                          const std::vector<float>& k,
                                          const std::vector<float>& v,
                                          const AttentionShape& shape,

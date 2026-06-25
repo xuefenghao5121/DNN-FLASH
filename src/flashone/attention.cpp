@@ -1,8 +1,11 @@
 #include "flashone/attention.hpp"
 
+#include "flashone/tile_kernel.hpp"
+
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <iterator>
 #include <limits>
 #include <stdexcept>
 
@@ -206,6 +209,131 @@ std::vector<float> flash_attention_tiled(const std::vector<float>& q,
         if (running_sum > 0.0f) {
             for (std::size_t vd = 0; vd < shape.value_dim; ++vd) {
                 output[qi * shape.value_dim + vd] = acc[vd] / running_sum;
+            }
+        }
+    }
+
+    return output;
+}
+
+
+std::vector<float> flash_attention_q_tile(const std::vector<float>& q,
+                                         const std::vector<float>& k,
+                                         const std::vector<float>& v,
+                                         const AttentionShape& shape,
+                                         const AttentionOptions& options) {
+    validate_inputs(q, k, v, shape);
+    if (options.key_block_size == 0) {
+        throw std::invalid_argument("key_block_size must be non-zero");
+    }
+    if (options.query_block_size == 0) {
+        throw std::invalid_argument("query_block_size must be non-zero");
+    }
+
+    std::vector<float> output(shape.query_tokens * shape.value_dim, 0.0f);
+
+    for (std::size_t q_block_begin = 0; q_block_begin < shape.query_tokens;
+         q_block_begin += options.query_block_size) {
+        const auto q_block_end =
+            std::min(shape.query_tokens, q_block_begin + options.query_block_size);
+        const auto q_block_rows = q_block_end - q_block_begin;
+
+        std::vector<float> q_tile(q_block_rows * shape.head_dim, 0.0f);
+        for (std::size_t local_q = 0; local_q < q_block_rows; ++local_q) {
+            const auto qi = q_block_begin + local_q;
+            std::copy_n(q.begin() + static_cast<std::ptrdiff_t>(qi * shape.head_dim),
+                        shape.head_dim,
+                        q_tile.begin() + static_cast<std::ptrdiff_t>(local_q * shape.head_dim));
+        }
+
+        std::vector<float> running_max(q_block_rows, -std::numeric_limits<float>::infinity());
+        std::vector<float> running_sum(q_block_rows, 0.0f);
+        std::vector<float> acc(q_block_rows * shape.value_dim, 0.0f);
+
+        for (std::size_t k_block_begin = 0; k_block_begin < shape.key_tokens;
+             k_block_begin += options.key_block_size) {
+            const auto k_block_end =
+                std::min(shape.key_tokens, k_block_begin + options.key_block_size);
+            const auto k_block_cols = k_block_end - k_block_begin;
+
+            if (options.causal && k_block_begin >= q_block_end) {
+                break;
+            }
+
+            // K tile is transposed into [head_dim, key_block_cols] so Q_tile x K_tile_T
+            // becomes a normal row-major matmul: [Q, H] x [H, Kb] -> [Q, Kb].
+            std::vector<float> k_tile_t(shape.head_dim * k_block_cols, 0.0f);
+            for (std::size_t local_k = 0; local_k < k_block_cols; ++local_k) {
+                const auto kj = k_block_begin + local_k;
+                for (std::size_t hd = 0; hd < shape.head_dim; ++hd) {
+                    k_tile_t[hd * k_block_cols + local_k] = k[kj * shape.head_dim + hd];
+                }
+            }
+
+            auto score_tile = matmul_tile(options.qk_tile_kernel,
+                                          q_tile,
+                                          k_tile_t,
+                                          {q_block_rows, k_block_cols, shape.head_dim});
+
+            for (std::size_t local_q = 0; local_q < q_block_rows; ++local_q) {
+                const auto qi = q_block_begin + local_q;
+                float block_max = -std::numeric_limits<float>::infinity();
+                bool has_valid_key = false;
+
+                for (std::size_t local_k = 0; local_k < k_block_cols; ++local_k) {
+                    const auto kj = k_block_begin + local_k;
+                    auto& score = score_tile[local_q * k_block_cols + local_k];
+                    if (masked_out(qi, kj, options)) {
+                        score = -std::numeric_limits<float>::infinity();
+                        continue;
+                    }
+                    score = score * options.scale + score_bias(qi, kj, options);
+                    block_max = std::max(block_max, score);
+                    has_valid_key = true;
+                }
+
+                if (!has_valid_key) {
+                    continue;
+                }
+
+                const float new_max = std::max(running_max[local_q], block_max);
+                const float old_scale = std::isinf(running_max[local_q]) && running_max[local_q] < 0.0f
+                                            ? 0.0f
+                                            : std::exp(running_max[local_q] - new_max);
+
+                for (std::size_t vd = 0; vd < shape.value_dim; ++vd) {
+                    acc[local_q * shape.value_dim + vd] *= old_scale;
+                }
+                running_sum[local_q] *= old_scale;
+
+                float block_sum = 0.0f;
+                for (std::size_t local_k = 0; local_k < k_block_cols; ++local_k) {
+                    const auto score = score_tile[local_q * k_block_cols + local_k];
+                    if (std::isinf(score) && score < 0.0f) {
+                        continue;
+                    }
+                    const float weight = std::exp(score - new_max);
+                    const auto kj = k_block_begin + local_k;
+                    block_sum += weight;
+                    for (std::size_t vd = 0; vd < shape.value_dim; ++vd) {
+                        acc[local_q * shape.value_dim + vd] +=
+                            weight * v[kj * shape.value_dim + vd];
+                    }
+                }
+
+                running_sum[local_q] += block_sum;
+                running_max[local_q] = new_max;
+            }
+        }
+
+        for (std::size_t local_q = 0; local_q < q_block_rows; ++local_q) {
+            const auto qi = q_block_begin + local_q;
+            if (running_sum[local_q] <= 0.0f) {
+                continue;
+            }
+            for (std::size_t vd = 0; vd < shape.value_dim; ++vd) {
+                output[qi * shape.value_dim + vd] =
+                    acc[local_q * shape.value_dim + vd] / running_sum[local_q];
             }
         }
     }

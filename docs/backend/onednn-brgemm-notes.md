@@ -105,3 +105,40 @@ Next replacement step:
 2. Replace the QK dot loop in `flash_attention_tiled` with `matmul_tile` for multi-row query tiles.
 3. Keep online softmax in FlashOne code between QK and PV.
 4. Replace PV accumulation with `matmul_tile` once the weighted-probability tile is materialized in a small local buffer.
+
+## QK Tile Attention Pipeline — 2026-06-26
+
+`flash_attention_q_tile(...)` now computes QK in multi-row query tiles:
+
+```text
+Q_tile[Qb, H] x K_tile_T[H, Kb] -> score_tile[Qb, Kb]
+```
+
+The QK tile multiplication is routed through `matmul_tile(options.qk_tile_kernel, ...)`, so it can use either:
+
+- `TileKernelKind::Reference`
+- `TileKernelKind::OneDnn`
+
+Current pipeline:
+
+1. Copy a small Q tile into row-major local buffer.
+2. Transpose K block into `[H, Kb]` local buffer.
+3. Call `matmul_tile` to compute raw QK score tile.
+4. Apply scale, causal mask, `BlockMask`, and `ScoreBiasFn` in FlashOne code.
+5. Run per-query online softmax recurrence.
+6. Accumulate `weight * V` using scalar/reference loops.
+
+This proves the first real backend substitution point: **QK tile computation can now use oneDNN inside attention** while preserving correctness with causal mask, block mask, and score bias.
+
+Current benchmark on local machine (`M=N=128,H=D=64,causal,key_block=32,query_block=16`):
+
+```text
+max_abs_diff_q_tile_onednn: 1.67638e-08
+flash_attention_q_tile_ref_ms: 3.76177
+flash_attention_q_tile_onednn_ms: 2.07142
+```
+
+Next step:
+
+- Add a PV tile path: materialize a small `P_tile[Qb,Kb]`, then use `matmul_tile(P_tile, V_tile)` for output accumulation.
+- After both QK and PV are routed through `TileKernel`, replace `dnnl::matmul` with lower-level BRGEMM/ukernel if the installed oneDNN version exposes the needed APIs.

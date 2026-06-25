@@ -138,3 +138,43 @@ max_abs_diff: 1.86265e-08
 standard_attention_ms: 5.99141
 flash_attention_tiled_ms: 2.99639
 ```
+
+## 2026-06-26 — QK tile attention uses TileKernel/oneDNN
+
+### Done
+
+- Extended `AttentionOptions` with:
+  - `query_block_size`
+  - `qk_tile_kernel`
+- Added `flash_attention_q_tile(...)`.
+- Implemented multi-row Q tile attention:
+  - `Q_tile[Qb,H] x K_tile_T[H,Kb] -> score_tile[Qb,Kb]`
+  - QK tile multiplication goes through `matmul_tile(...)`
+  - online softmax remains in FlashOne code
+  - PV accumulation remains scalar/reference for now
+- Added `tests/cpp/test_q_tile_attention.cpp`.
+- Updated benchmark to report row-tiled, Q-tile reference, and Q-tile oneDNN variants.
+
+### Verification
+
+```text
+PYTHONPATH=python python3 -m pytest -q tests/python
+10 passed in 0.09s
+
+cmake -S . -B build -DFLASHONE_ENABLE_ONEDNN=ON
+cmake --build build -j
+ctest --test-dir build --output-on-failure
+100% tests passed, 0 tests failed out of 5
+
+./build/flashone_q_tile_attention_tests
+flashone Q-tile attention tests passed
+
+./build/flashone_bench
+max_abs_diff_row_tiled: 1.86265e-08
+max_abs_diff_q_tile: 1.86265e-08
+max_abs_diff_q_tile_onednn: 1.67638e-08
+standard_attention_ms: 5.66461
+flash_attention_tiled_ms: 3.01477
+flash_attention_q_tile_ref_ms: 3.76177
+flash_attention_q_tile_onednn_ms: 2.07142
+```

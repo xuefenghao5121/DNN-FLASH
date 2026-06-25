@@ -43,15 +43,46 @@ int main() {
     const auto standard = [&]() { return flashone::standard_attention(q, k, v, shape, options); };
     const auto tiled = [&]() { return flashone::flash_attention_tiled(q, k, v, shape, options); };
 
+    auto q_tile_options = options;
+    q_tile_options.query_block_size = 16;
+    q_tile_options.qk_tile_kernel = flashone::TileKernelKind::Reference;
+    const auto q_tile = [&]() { return flashone::flash_attention_q_tile(q, k, v, shape, q_tile_options); };
+
+#ifdef FLASHONE_HAS_ONEDNN
+    auto q_tile_onednn_options = q_tile_options;
+    q_tile_onednn_options.qk_tile_kernel = flashone::TileKernelKind::OneDnn;
+    const auto q_tile_onednn = [&]() {
+        return flashone::flash_attention_q_tile(q, k, v, shape, q_tile_onednn_options);
+    };
+#endif
+
     const auto standard_out = standard();
     const auto tiled_out = tiled();
+    const auto q_tile_out = q_tile();
     const auto diff = flashone::max_abs_diff(standard_out, tiled_out);
+    const auto q_tile_diff = flashone::max_abs_diff(standard_out, q_tile_out);
+#ifdef FLASHONE_HAS_ONEDNN
+    const auto q_tile_onednn_out = q_tile_onednn();
+    const auto q_tile_onednn_diff = flashone::max_abs_diff(standard_out, q_tile_onednn_out);
+#endif
 
-    std::cout << "FlashOne benchmark (reference loops, not optimized backend)\n";
+    std::cout << "FlashOne benchmark (row-tiled reference + QK tile backend variants)\n";
     std::cout << "shape: M=" << shape.query_tokens << " N=" << shape.key_tokens
               << " K=" << shape.head_dim << " D=" << shape.value_dim << " causal=1\n";
-    std::cout << "max_abs_diff: " << diff << "\n";
+    std::cout << "max_abs_diff_row_tiled: " << diff << "\n";
+    std::cout << "max_abs_diff_q_tile: " << q_tile_diff << "\n";
+#ifdef FLASHONE_HAS_ONEDNN
+    std::cout << "max_abs_diff_q_tile_onednn: " << q_tile_onednn_diff << "\n";
+#endif
     std::cout << "standard_attention_ms: " << time_ms(standard, repeat) << "\n";
     std::cout << "flash_attention_tiled_ms: " << time_ms(tiled, repeat) << "\n";
-    return diff <= 1e-5f ? 0 : 1;
+    std::cout << "flash_attention_q_tile_ref_ms: " << time_ms(q_tile, repeat) << "\n";
+#ifdef FLASHONE_HAS_ONEDNN
+    std::cout << "flash_attention_q_tile_onednn_ms: " << time_ms(q_tile_onednn, repeat) << "\n";
+#endif
+    bool ok = diff <= 1e-5f && q_tile_diff <= 1e-5f;
+#ifdef FLASHONE_HAS_ONEDNN
+    ok = ok && q_tile_onednn_diff <= 1e-5f;
+#endif
+    return ok ? 0 : 1;
 }
