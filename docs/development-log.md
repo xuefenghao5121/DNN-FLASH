@@ -240,3 +240,47 @@ flash_attention_qk_pv_onednn_ms: 0.876912
 - Graph-mode sanity (`--graph`) for seq128: TensorFlow attention `0.282851ms`, FlashOne attention `2.752409ms`; decoder `1.409489ms` vs `8.442781ms`. Current Custom Op is usable for E2E replacement but not competitive with TensorFlow graph execution yet.
 - Key bottleneck now appears to be Custom Op/kernel overhead plus internal tile copies and per-call allocations; next target should be direct Tensor-backed compute path and buffer reuse, before XLA lowering.
 
+## 2026-06-26 Stage 0 performance baseline + tile sweep harness
+
+- Extended `benchmarks/tensorflow/bench_flashone_tf_e2e.py` with machine-readable outputs:
+  - `--output-json`
+  - `--output-csv`
+- Added tile sweep mode:
+  - `--sweep`
+  - `--query-blocks`
+  - `--key-blocks`
+- Generated baseline artifacts under `build/benchmarks/` for eager/graph seq64/128/256 and initial eager tile sweeps.
+- Added baseline report: `docs/perf-baseline-2026-06-26.md`.
+
+### Verification
+
+```text
+PYTHONPATH=python:. python3 -m pytest -q tests/python tests/tensorflow
+12 passed in 2.16s
+
+ctest --test-dir build --output-on-failure
+100% tests passed, 0 tests failed out of 7
+
+./build/flashone_bench
+flash_attention_qk_pv_onednn_ms: 0.729506
+max_abs_diff_qk_pv_onednn: 1.86265e-08
+```
+
+### Baseline summary
+
+Default TensorFlow benchmark config: `B=1,H=4,D=32,E=128,causal=true,q_block=16,k_block=32`.
+
+- Eager seq64: FlashOne attention `1.103151ms` vs TF attention `2.401837ms`.
+- Eager seq128: FlashOne attention `2.601036ms` vs TF attention `1.478697ms`.
+- Eager seq256: FlashOne attention `7.303471ms` vs TF attention `0.961287ms`.
+- Graph seq64: FlashOne attention `0.692697ms` vs TF attention `0.254572ms`.
+- Graph seq128: FlashOne attention `2.132716ms` vs TF attention `0.290322ms`.
+- Graph seq256: FlashOne attention `7.646170ms` vs TF attention `0.407576ms`.
+
+Initial tile sweep findings:
+
+- Seq128 eager best: `q_block=32,k_block=32`, FlashOne attention `1.972757ms` (~1.32x faster than default FlashOne seq128).
+- Seq256 eager best: `q_block=32,k_block=64`, FlashOne attention `5.276837ms` (~1.38x faster than default FlashOne seq256, still slower than TF).
+
+Next: validate tile heuristic with a wider/repeated sweep, then add default tile selection and continue custom-op overhead audit before XLA Custom Call.
+
