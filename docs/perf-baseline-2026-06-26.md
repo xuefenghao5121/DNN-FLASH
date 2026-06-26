@@ -126,3 +126,31 @@ Compared with default seq256 eager FlashOne latency `7.303471ms`, this is about 
 2. Run a wider seq64/128/256 sweep with more repeats to reduce timing noise.
 3. Audit custom-op data path for remaining wrapper/scratchpad/memory descriptor overhead.
 4. Start the XLA Custom Call minimum viable path after the above default heuristic is validated.
+
+## Follow-up Wider Eager Sweep and Default Tile Heuristic
+
+A wider eager sweep was run with `q_block=8,16,32,64`, `k_block=16,32,64,128`, `warmup=3`, `repeat=8`.
+
+Artifacts:
+
+- `build/benchmarks/sweep2_eager_seq64.json/csv`
+- `build/benchmarks/sweep2_eager_seq128.json/csv`
+- `build/benchmarks/sweep2_eager_seq256.json/csv`
+
+Best FlashOne attention latencies:
+
+| Seq | Best q_block | Best k_block | FlashOne attention (ms) | TF attention in same run (ms) | Speedup vs TF |
+|---:|---:|---:|---:|---:|---:|
+| 64 | 64 | 64 | 0.631580 | 2.503426 | 3.964x |
+| 128 | 32 | 64 | 1.645492 | 2.470556 | 1.501x |
+| 256 | 32 | 64 | 5.207241 | 2.768849 | 0.532x |
+
+Implemented Python wrapper heuristic in `python/flashone_tf/ops.py`:
+
+- `seq <= 64`: `q_block=64,k_block=64` capped by actual query/key length.
+- otherwise: `q_block=32,k_block=64` capped by actual query/key length.
+- Explicit `query_block_size` / `key_block_size` still override the heuristic.
+- Dynamic token dimensions require explicit block sizes.
+
+This heuristic applies to Python wrapper calls. The low-level TensorFlow op attributes still keep their explicit registered defaults (`16/32`) for ABI stability; the benchmark harness now uses the wrapper heuristic when `--query-block/--key-block` are omitted.
+

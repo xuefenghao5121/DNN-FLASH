@@ -284,3 +284,27 @@ Initial tile sweep findings:
 
 Next: validate tile heuristic with a wider/repeated sweep, then add default tile selection and continue custom-op overhead audit before XLA Custom Call.
 
+## 2026-06-26 Stage 1A default tile heuristic
+
+- Ran a wider eager tile sweep for seq64/128/256 with `q_block=8,16,32,64` and `k_block=16,32,64,128`.
+- Best attention latencies:
+  - seq64: `q=64,k=64`, FlashOne `0.631580ms` vs TF `2.503426ms`.
+  - seq128: `q=32,k=64`, FlashOne `1.645492ms` vs TF `2.470556ms`.
+  - seq256: `q=32,k=64`, FlashOne `5.207241ms` vs TF `2.768849ms`.
+- Added `select_tile_sizes(query_tokens, key_tokens)` to `python/flashone_tf/ops.py`.
+- Updated `flashone_attention(...)` so omitted block sizes use the heuristic; explicit block sizes still override.
+- Updated benchmark CLI defaults so omitted `--query-block/--key-block` use the same heuristic.
+- Added TensorFlow tests for heuristic selection and default-wrapper correctness.
+
+### Verification
+
+```text
+PYTHONPATH=python:. python3 -m pytest -q tests/python tests/tensorflow
+14 passed
+
+ctest --test-dir build --output-on-failure
+100% tests passed, 0 tests failed out of 7
+```
+
+Next: Custom Op data-path audit and graph/XLA minimum custom-call investigation.
+

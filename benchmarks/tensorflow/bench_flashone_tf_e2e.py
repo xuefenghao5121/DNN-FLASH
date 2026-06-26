@@ -34,7 +34,7 @@ from typing import Any
 import numpy as np
 import tensorflow as tf
 
-from flashone_tf import flashone_attention
+from flashone_tf import flashone_attention, select_tile_sizes
 
 
 @dataclass(frozen=True)
@@ -324,8 +324,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--seq", type=int, default=128)
     parser.add_argument("--head-dim", type=int, default=32)
     parser.add_argument("--ffn-multiplier", type=int, default=4)
-    parser.add_argument("--query-block", type=int, default=16)
-    parser.add_argument("--key-block", type=int, default=32)
+    parser.add_argument("--query-block", type=int, default=None, help="Query tile size; default uses FlashOne heuristic")
+    parser.add_argument("--key-block", type=int, default=None, help="Key tile size; default uses FlashOne heuristic")
     parser.add_argument("--warmup", type=int, default=3)
     parser.add_argument("--repeat", type=int, default=10)
     parser.add_argument("--no-causal", action="store_true")
@@ -362,10 +362,17 @@ def main() -> None:
             if q_block <= args.seq and k_block <= args.seq
         ]
     else:
+        query_block, key_block = (
+            select_tile_sizes(args.seq, args.seq)
+            if args.query_block is None or args.key_block is None
+            else (args.query_block, args.key_block)
+        )
+        query_block = query_block if args.query_block is None else args.query_block
+        key_block = key_block if args.key_block is None else args.key_block
         configs = [
             BenchConfig(
-                query_block=args.query_block,
-                key_block=args.key_block,
+                query_block=query_block,
+                key_block=key_block,
                 **base_kwargs,
             )
         ]
