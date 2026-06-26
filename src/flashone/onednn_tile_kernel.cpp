@@ -56,6 +56,22 @@ std::vector<float> matmul_tile_onednn(const std::vector<float>& a,
         throw std::invalid_argument("B size does not match matmul shape");
     }
 
+    std::vector<float> c(shape.m * shape.n, 0.0f);
+    matmul_tile_onednn_inplace(a.data(), b.data(), c.data(), shape);
+    return c;
+}
+
+void matmul_tile_onednn_inplace(const float* a,
+                                 const float* b,
+                                 float* c,
+                                 const MatmulShape& shape) {
+    if (shape.m == 0 || shape.n == 0 || shape.k == 0) {
+        throw std::invalid_argument("matmul dimensions must be non-zero");
+    }
+    if (a == nullptr || b == nullptr || c == nullptr) {
+        throw std::invalid_argument("matmul pointers must be non-null");
+    }
+
     auto& ctx = context();
     const auto key = std::make_tuple(shape.m, shape.n, shape.k);
 
@@ -66,14 +82,12 @@ std::vector<float> matmul_tile_onednn(const std::vector<float>& a,
     }
     auto& cached = it->second;
 
-    // oneDNN does not mutate src/weights; API takes non-const void* in this version.
-    auto* a_ptr = const_cast<float*>(a.data());
-    auto* b_ptr = const_cast<float*>(b.data());
-    std::vector<float> c(shape.m * shape.n, 0.0f);
+    auto* a_ptr = const_cast<float*>(a);
+    auto* b_ptr = const_cast<float*>(b);
 
     dnnl::memory a_mem(cached.a_md, ctx.engine, a_ptr);
     dnnl::memory b_mem(cached.b_md, ctx.engine, b_ptr);
-    dnnl::memory c_mem(cached.c_md, ctx.engine, c.data());
+    dnnl::memory c_mem(cached.c_md, ctx.engine, c);
 
     cached.primitive.execute(ctx.stream, {
         {DNNL_ARG_SRC, a_mem},
@@ -81,8 +95,6 @@ std::vector<float> matmul_tile_onednn(const std::vector<float>& a,
         {DNNL_ARG_DST, c_mem},
     });
     ctx.stream.wait();
-
-    return c;
 }
 
 }  // namespace flashone

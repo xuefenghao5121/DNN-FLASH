@@ -20,6 +20,9 @@ struct BatchedAttentionShape {
 // K: [B,H,N,D]
 // V: [B,H,N,Dv]
 // O: [B,H,M,Dv]
+//
+// Uses a thread-local AttentionWorkspace internally: zero per-call allocation
+// after the first invocation. Operates directly on raw pointers (no vector copies).
 void flash_attention_batched_qk_pv_tile(const float* q,
                                         const float* k,
                                         const float* v,

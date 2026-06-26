@@ -480,6 +480,162 @@ std::vector<float> flash_attention_qk_pv_tile(const std::vector<float>& q,
     return output;
 }
 
+void flash_attention_qk_pv_tile_ws(const float* q,
+                                    const float* k,
+                                    const float* v,
+                                    float* output,
+                                    const AttentionShape& shape,
+                                    const AttentionOptions& options,
+                                    AttentionWorkspace& ws) {
+    if (q == nullptr || k == nullptr || v == nullptr || output == nullptr) {
+        throw std::invalid_argument("attention pointers must be non-null");
+    }
+    if (shape.query_tokens == 0 || shape.key_tokens == 0 || shape.head_dim == 0 ||
+        shape.value_dim == 0) {
+        throw std::invalid_argument("Attention dimensions must be non-zero");
+    }
+    if (options.key_block_size == 0) {
+        throw std::invalid_argument("key_block_size must be non-zero");
+    }
+    if (options.query_block_size == 0) {
+        throw std::invalid_argument("query_block_size must be non-zero");
+    }
+
+    const auto q_bs = options.query_block_size;
+    const auto k_bs = options.key_block_size;
+    ws.resize(q_bs, k_bs, shape.head_dim, shape.value_dim);
+
+    const auto neg_inf = -std::numeric_limits<float>::infinity();
+
+    for (std::size_t q_block_begin = 0; q_block_begin < shape.query_tokens;
+         q_block_begin += q_bs) {
+        const auto q_block_end = std::min(shape.query_tokens, q_block_begin + q_bs);
+        const auto q_rows = q_block_end - q_block_begin;
+
+        // Copy Q tile (column-major source [M, D] row-major -> q_tile [q_rows, D])
+        // Point q_tile_ptr directly into q with offset to avoid copy
+        const float* q_tile_ptr = q + q_block_begin * shape.head_dim;
+
+        // Init per-Q-block state
+        for (std::size_t i = 0; i < q_rows; ++i) {
+            ws.running_max[i] = neg_inf;
+            ws.running_sum[i] = 0.0f;
+            ws.row_has_valid[i] = 0;
+        }
+        for (std::size_t i = 0; i < q_rows * shape.value_dim; ++i) {
+            ws.acc[i] = 0.0f;
+        }
+
+        for (std::size_t k_block_begin = 0; k_block_begin < shape.key_tokens;
+             k_block_begin += k_bs) {
+            const auto k_block_end = std::min(shape.key_tokens, k_block_begin + k_bs);
+            const auto k_cols = k_block_end - k_block_begin;
+
+            if (options.causal && k_block_begin >= q_block_end) {
+                break;
+            }
+
+            // Transpose K tile: source [k_cols, D] -> k_tile_t [D, k_cols]
+            for (std::size_t hd = 0; hd < shape.head_dim; ++hd) {
+                for (std::size_t lk = 0; lk < k_cols; ++lk) {
+                    const auto kj = k_block_begin + lk;
+                    ws.k_tile_t[hd * k_cols + lk] = k[kj * shape.head_dim + hd];
+                }
+            }
+
+            // Copy V tile: source [k_cols, Dv] -> v_tile [k_cols, Dv]
+            const float* v_tile_ptr = v + k_block_begin * shape.value_dim;
+
+            // QK tile: score_tile [q_rows, k_cols] = q_tile [q_rows, D] x k_tile_t [D, k_cols]
+            matmul_tile_inplace(options.qk_tile_kernel,
+                                q_tile_ptr,
+                                ws.k_tile_t.data(),
+                                ws.score_tile.data(),
+                                {q_rows, k_cols, shape.head_dim});
+
+            // Softmax preprocessing: scale, mask, bias
+            for (std::size_t i = 0; i < q_rows; ++i) {
+                ws.new_maxes[i] = ws.running_max[i];
+                ws.block_sums[i] = 0.0f;
+                ws.row_has_valid[i] = 0;
+            }
+
+            for (std::size_t lk = 0; lk < q_rows; ++lk) {
+                const auto qi = q_block_begin + lk;
+                float block_max = neg_inf;
+
+                for (std::size_t kk = 0; kk < k_cols; ++kk) {
+                    const auto kj = k_block_begin + kk;
+                    auto& score = ws.score_tile[lk * k_cols + kk];
+                    if (masked_out(qi, kj, options)) {
+                        score = neg_inf;
+                        continue;
+                    }
+                    score = score * options.scale + score_bias(qi, kj, options);
+                    block_max = std::max(block_max, score);
+                    ws.row_has_valid[lk] = 1;
+                }
+
+                if (!ws.row_has_valid[lk]) {
+                    continue;
+                }
+
+                const float new_max = std::max(ws.running_max[lk], block_max);
+                ws.new_maxes[lk] = new_max;
+                ws.old_scales[lk] = std::isinf(ws.running_max[lk]) && ws.running_max[lk] < 0.0f
+                                        ? 0.0f
+                                        : std::exp(ws.running_max[lk] - new_max);
+
+                // Compute softmax weights and block sum
+                for (std::size_t kk = 0; kk < k_cols; ++kk) {
+                    const float score = ws.score_tile[lk * k_cols + kk];
+                    if (std::isinf(score) && score < 0.0f) {
+                        ws.p_tile[lk * k_cols + kk] = 0.0f;
+                        continue;
+                    }
+                    const float weight = std::exp(score - new_max);
+                    ws.p_tile[lk * k_cols + kk] = weight;
+                    ws.block_sums[lk] += weight;
+                }
+            }
+
+            // PV tile: pv_tile [q_rows, Dv] = p_tile [q_rows, k_cols] x v_tile [k_cols, Dv]
+            matmul_tile_inplace(options.pv_tile_kernel,
+                                ws.p_tile.data(),
+                                v_tile_ptr,
+                                ws.pv_tile.data(),
+                                {q_rows, shape.value_dim, k_cols});
+
+            // Accumulate
+            for (std::size_t lk = 0; lk < q_rows; ++lk) {
+                if (!ws.row_has_valid[lk]) {
+                    continue;
+                }
+                const float old_scale = ws.old_scales[lk];
+                for (std::size_t vd = 0; vd < shape.value_dim; ++vd) {
+                    ws.acc[lk * shape.value_dim + vd] =
+                        ws.acc[lk * shape.value_dim + vd] * old_scale +
+                        ws.pv_tile[lk * shape.value_dim + vd];
+                }
+                ws.running_sum[lk] = ws.running_sum[lk] * old_scale + ws.block_sums[lk];
+                ws.running_max[lk] = ws.new_maxes[lk];
+            }
+        }
+
+        // Normalize and write output
+        for (std::size_t lk = 0; lk < q_rows; ++lk) {
+            const auto qi = q_block_begin + lk;
+            if (ws.running_sum[lk] <= 0.0f) {
+                continue;
+            }
+            const float inv = 1.0f / ws.running_sum[lk];
+            for (std::size_t vd = 0; vd < shape.value_dim; ++vd) {
+                output[qi * shape.value_dim + vd] = ws.acc[lk * shape.value_dim + vd] * inv;
+            }
+        }
+    }
+}
+
 float max_abs_diff(const std::vector<float>& a, const std::vector<float>& b) {
     if (a.size() != b.size()) {
         throw std::invalid_argument("Cannot compare vectors with different sizes");

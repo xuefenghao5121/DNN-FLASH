@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "flashone/tile_kernel.hpp"
+#include "flashone/attention_workspace.hpp"
 
 namespace flashone {
 
@@ -65,5 +66,15 @@ std::vector<float> flash_attention_qk_pv_tile(const std::vector<float>& q,
                                              const AttentionOptions& options);
 
 float max_abs_diff(const std::vector<float>& a, const std::vector<float>& b);
+
+/// Workspace-based flash attention: operates directly on raw pointers with
+/// pre-allocated buffers. Zero per-iteration heap allocation.
+void flash_attention_qk_pv_tile_ws(const float* q,
+                                    const float* k,
+                                    const float* v,
+                                    float* output,
+                                    const AttentionShape& shape,
+                                    const AttentionOptions& options,
+                                    AttentionWorkspace& ws);
 
 }  // namespace flashone

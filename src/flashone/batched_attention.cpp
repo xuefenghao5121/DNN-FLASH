@@ -33,17 +33,18 @@ void flash_attention_batched_qk_pv_tile(const float* q,
     const auto o_stride = shape.query_tokens * shape.value_dim;
     const auto total = shape.batch * shape.heads;
 
+    // Thread-local workspace: allocated once per thread, reused across all batch/head pairs.
+    thread_local AttentionWorkspace ws;
+
     for (std::size_t bh = 0; bh < total; ++bh) {
         const float* q_base = q + bh * q_stride;
         const float* k_base = k + bh * k_stride;
         const float* v_base = v + bh * v_stride;
         float* o_base = out + bh * o_stride;
 
-        std::vector<float> q_vec(q_base, q_base + q_stride);
-        std::vector<float> k_vec(k_base, k_base + k_stride);
-        std::vector<float> v_vec(v_base, v_base + v_stride);
-        auto o_vec = flash_attention_qk_pv_tile(q_vec, k_vec, v_vec, inner_shape, options);
-        std::copy(o_vec.begin(), o_vec.end(), o_base);
+        // Zero-copy: pass raw pointers directly, workspace handles all tile buffers.
+        flash_attention_qk_pv_tile_ws(q_base, k_base, v_base, o_base,
+                                      inner_shape, options, ws);
     }
 }
 

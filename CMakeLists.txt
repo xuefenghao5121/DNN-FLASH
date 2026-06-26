@@ -14,6 +14,7 @@ add_library(flashone_core
   src/flashone/attention.cpp
   src/flashone/backend.cpp
   src/flashone/tile_kernel.cpp
+  src/flashone/attention_workspace.cpp
   src/flashone/batched_attention.cpp
 )
 target_include_directories(flashone_core PUBLIC include)
@@ -37,6 +38,9 @@ target_link_libraries(flashone_q_tile_attention_tests PRIVATE flashone_core)
 
 add_executable(flashone_qk_pv_tile_attention_tests tests/cpp/test_qk_pv_tile_attention.cpp)
 target_link_libraries(flashone_qk_pv_tile_attention_tests PRIVATE flashone_core)
+
+add_executable(flashone_workspace_attention_tests tests/cpp/test_workspace_attention.cpp)
+target_link_libraries(flashone_workspace_attention_tests PRIVATE flashone_core)
 
 add_executable(flashone_bench benchmarks/bench_attention.cpp)
 target_link_libraries(flashone_bench PRIVATE flashone_core)
@@ -92,6 +96,7 @@ if(BUILD_TESTING)
   add_test(NAME flashone_tile_kernel_tests COMMAND flashone_tile_kernel_tests)
   add_test(NAME flashone_q_tile_attention_tests COMMAND flashone_q_tile_attention_tests)
   add_test(NAME flashone_qk_pv_tile_attention_tests COMMAND flashone_qk_pv_tile_attention_tests)
+  add_test(NAME flashone_workspace_attention_tests COMMAND flashone_workspace_attention_tests)
   if(TARGET flashone_dnnl_smoke)
     add_test(NAME flashone_dnnl_smoke COMMAND flashone_dnnl_smoke)
   endif()
