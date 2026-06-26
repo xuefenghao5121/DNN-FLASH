@@ -63,8 +63,15 @@ int main() {
 
     auto qk_pv_onednn_options = q_tile_onednn_options;
     qk_pv_onednn_options.pv_tile_kernel = flashone::TileKernelKind::OneDnn;
+    qk_pv_onednn_options.qk_tile_layout = flashone::QkTileLayout::StridedK;
     const auto qk_pv_onednn = [&]() {
         return flashone::flash_attention_qk_pv_tile(q, k, v, shape, qk_pv_onednn_options);
+    };
+
+    auto qk_pv_onednn_copied_options = qk_pv_onednn_options;
+    qk_pv_onednn_copied_options.qk_tile_layout = flashone::QkTileLayout::CopiedTransposed;
+    const auto qk_pv_onednn_copied = [&]() {
+        return flashone::flash_attention_qk_pv_tile(q, k, v, shape, qk_pv_onednn_copied_options);
     };
 #endif
 
@@ -78,8 +85,11 @@ int main() {
 #ifdef FLASHONE_HAS_ONEDNN
     const auto q_tile_onednn_out = q_tile_onednn();
     const auto qk_pv_onednn_out = qk_pv_onednn();
+    const auto qk_pv_onednn_copied_out = qk_pv_onednn_copied();
     const auto q_tile_onednn_diff = flashone::max_abs_diff(standard_out, q_tile_onednn_out);
     const auto qk_pv_onednn_diff = flashone::max_abs_diff(standard_out, qk_pv_onednn_out);
+    const auto qk_pv_onednn_copied_diff =
+        flashone::max_abs_diff(standard_out, qk_pv_onednn_copied_out);
 #endif
 
     std::cout << "FlashOne benchmark (row-tiled reference + QK tile backend variants)\n";
@@ -91,6 +101,7 @@ int main() {
 #ifdef FLASHONE_HAS_ONEDNN
     std::cout << "max_abs_diff_q_tile_onednn: " << q_tile_onednn_diff << "\n";
     std::cout << "max_abs_diff_qk_pv_onednn: " << qk_pv_onednn_diff << "\n";
+    std::cout << "max_abs_diff_qk_pv_onednn_copied_k: " << qk_pv_onednn_copied_diff << "\n";
 #endif
     std::cout << "standard_attention_ms: " << time_ms(standard, repeat) << "\n";
     std::cout << "flash_attention_tiled_ms: " << time_ms(tiled, repeat) << "\n";
@@ -99,10 +110,13 @@ int main() {
 #ifdef FLASHONE_HAS_ONEDNN
     std::cout << "flash_attention_q_tile_onednn_ms: " << time_ms(q_tile_onednn, repeat) << "\n";
     std::cout << "flash_attention_qk_pv_onednn_ms: " << time_ms(qk_pv_onednn, repeat) << "\n";
+    std::cout << "flash_attention_qk_pv_onednn_copied_k_ms: "
+              << time_ms(qk_pv_onednn_copied, repeat) << "\n";
 #endif
     bool ok = diff <= 1e-5f && q_tile_diff <= 1e-5f && qk_pv_tile_diff <= 1e-5f;
 #ifdef FLASHONE_HAS_ONEDNN
-    ok = ok && q_tile_onednn_diff <= 1e-5f && qk_pv_onednn_diff <= 1e-5f;
+    ok = ok && q_tile_onednn_diff <= 1e-5f && qk_pv_onednn_diff <= 1e-5f &&
+         qk_pv_onednn_copied_diff <= 1e-5f;
 #endif
     return ok ? 0 : 1;
 }

@@ -535,24 +535,40 @@ void flash_attention_qk_pv_tile_ws(const float* q,
                 break;
             }
 
-            // QK tile: score_tile [q_rows, k_cols] = q_tile [q_rows, D] x K_view^T [D, k_cols]
-            // K is stored row-major [N, D]. The strided B view removes the previous
-            // explicit K-tile transpose/copy from the inner loop.
-            matmul_tile_strided_inplace(options.qk_tile_kernel,
-                                        q_tile_ptr,
-                                        k + k_block_begin * shape.head_dim,
-                                        ws.score_tile.data(),
-                                        StridedMatmulShape{
-                                            q_rows,
-                                            k_cols,
-                                            shape.head_dim,
-                                            shape.head_dim,
-                                            1,
-                                            1,
-                                            shape.head_dim,
-                                            k_cols,
-                                            1,
-                                        });
+            if (options.qk_tile_layout == QkTileLayout::CopiedTransposed) {
+                // Materialize K^T as contiguous [D, k_cols]. For some shapes,
+                // oneDNN's contiguous-B matmul can beat strided-B despite this copy.
+                for (std::size_t hd = 0; hd < shape.head_dim; ++hd) {
+                    for (std::size_t lk = 0; lk < k_cols; ++lk) {
+                        ws.k_tile_t[hd * k_cols + lk] =
+                            k[(k_block_begin + lk) * shape.head_dim + hd];
+                    }
+                }
+                matmul_tile_inplace(options.qk_tile_kernel,
+                                    q_tile_ptr,
+                                    ws.k_tile_t.data(),
+                                    ws.score_tile.data(),
+                                    {q_rows, k_cols, shape.head_dim});
+            } else {
+                // QK tile: score_tile [q_rows, k_cols] = q_tile [q_rows, D] x K_view^T [D, k_cols]
+                // K is stored row-major [N, D]. The strided B view removes the explicit
+                // K-tile transpose/copy from the inner loop.
+                matmul_tile_strided_inplace(options.qk_tile_kernel,
+                                            q_tile_ptr,
+                                            k + k_block_begin * shape.head_dim,
+                                            ws.score_tile.data(),
+                                            StridedMatmulShape{
+                                                q_rows,
+                                                k_cols,
+                                                shape.head_dim,
+                                                shape.head_dim,
+                                                1,
+                                                1,
+                                                shape.head_dim,
+                                                k_cols,
+                                                1,
+                                            });
+            }
 
             // Softmax preprocessing: scale, mask, bias
             for (std::size_t i = 0; i < q_rows; ++i) {

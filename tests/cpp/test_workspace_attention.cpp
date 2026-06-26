@@ -50,7 +50,8 @@ flashone::BlockMask make_window_mask(std::size_t query_tokens,
 }
 
 void test_ws_matches_standard(flashone::TileKernelKind qk_kind,
-                              flashone::TileKernelKind pv_kind) {
+                              flashone::TileKernelKind pv_kind,
+                              flashone::QkTileLayout qk_layout = flashone::QkTileLayout::StridedK) {
     const flashone::AttentionShape shape{11, 14, 7, 6};
     const auto q = make_values(shape.query_tokens * shape.head_dim, 0.17f);
     const auto k = make_values(shape.key_tokens * shape.head_dim, 1.17f);
@@ -64,6 +65,7 @@ void test_ws_matches_standard(flashone::TileKernelKind qk_kind,
     options.query_block_size = 3;
     options.qk_tile_kernel = qk_kind;
     options.pv_tile_kernel = pv_kind;
+    options.qk_tile_layout = qk_layout;
     options.block_mask = &mask;
     options.score_bias = [](std::size_t qi, std::size_t kj) {
         return static_cast<float>(qi) * 0.004f - static_cast<float>(kj) * 0.002f;
@@ -79,7 +81,8 @@ void test_ws_matches_standard(flashone::TileKernelKind qk_kind,
 }
 
 void test_ws_matches_vector_api(flashone::TileKernelKind qk_kind,
-                                flashone::TileKernelKind pv_kind) {
+                                flashone::TileKernelKind pv_kind,
+                                flashone::QkTileLayout qk_layout = flashone::QkTileLayout::StridedK) {
     const flashone::AttentionShape shape{32, 32, 64, 64};
     const auto q = make_values(shape.query_tokens * shape.head_dim, 0.3f);
     const auto k = make_values(shape.key_tokens * shape.head_dim, 1.5f);
@@ -92,6 +95,7 @@ void test_ws_matches_vector_api(flashone::TileKernelKind qk_kind,
     options.query_block_size = 16;
     options.qk_tile_kernel = qk_kind;
     options.pv_tile_kernel = pv_kind;
+    options.qk_tile_layout = qk_layout;
 
     const auto expected = flashone::flash_attention_qk_pv_tile(q, k, v, shape, options);
 
@@ -148,6 +152,12 @@ int main() {
                              flashone::TileKernelKind::OneDnn);
     test_ws_matches_vector_api(flashone::TileKernelKind::OneDnn,
                                flashone::TileKernelKind::OneDnn);
+    test_ws_matches_standard(flashone::TileKernelKind::OneDnn,
+                             flashone::TileKernelKind::OneDnn,
+                             flashone::QkTileLayout::CopiedTransposed);
+    test_ws_matches_vector_api(flashone::TileKernelKind::OneDnn,
+                               flashone::TileKernelKind::OneDnn,
+                               flashone::QkTileLayout::CopiedTransposed);
 #endif
     std::cout << "flashone workspace attention tests passed\n";
     return 0;

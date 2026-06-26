@@ -23,6 +23,7 @@ def test_flashone_custom_op_can_replace_attention_in_decoder_block() -> None:
         causal=True,
         query_block=4,
         key_block=4,
+        qk_tile_layout="copied_transposed",
         warmup=1,
         repeat=1,
     )

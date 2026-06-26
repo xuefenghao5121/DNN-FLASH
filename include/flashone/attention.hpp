@@ -30,6 +30,11 @@ struct BlockMask {
 
 using ScoreBiasFn = std::function<float(std::size_t query_index, std::size_t key_index)>;
 
+enum class QkTileLayout {
+    CopiedTransposed,
+    StridedK,
+};
+
 struct AttentionOptions {
     float scale = 1.0f;
     bool causal = false;
@@ -37,6 +42,7 @@ struct AttentionOptions {
     std::size_t query_block_size = 1;
     TileKernelKind qk_tile_kernel = TileKernelKind::Reference;
     TileKernelKind pv_tile_kernel = TileKernelKind::Reference;
+    QkTileLayout qk_tile_layout = QkTileLayout::StridedK;
     const BlockMask* block_mask = nullptr;
     ScoreBiasFn score_bias = nullptr;
 };

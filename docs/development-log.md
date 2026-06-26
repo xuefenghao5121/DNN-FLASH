@@ -344,3 +344,38 @@ TensorFlow eager after strided K:
 - seq256, tile 32x64: FlashOne `4.807103ms` vs TF `1.490950ms`.
 
 Next: evaluate strided-K vs copied-contiguous-K as a shape-dependent heuristic, and investigate oneDNN memory wrapper/stream wait overhead.
+
+## 2026-06-26 Stage 1B follow-up: QK layout dual path
+
+- Added `QkTileLayout::{CopiedTransposed, StridedK}` to `AttentionOptions`.
+- Kept the strided-K path from the data-path audit, and restored the copied/transposed-K path as an explicit alternative.
+- Exposed `qk_tile_layout` through the TensorFlow Custom Op attr and Python wrapper:
+  - `"strided_k"`
+  - `"copied_transposed"`
+- Added `select_qk_tile_layout(...)`; current default is always `"strided_k"` for the TensorFlow custom-op path.
+- Extended the TensorFlow benchmark with `--qk-tile-layout` / `--qk-layouts` so layout comparisons can be persisted to JSON/CSV.
+- Extended workspace tests and TensorFlow tests so both QK layouts are validated against the TensorFlow/reference attention outputs.
+
+### Layout comparison snapshot
+
+C++ microbenchmark, `M=N=128,D=64,V=64,causal=1`:
+
+```text
+flash_attention_qk_pv_onednn_ms=0.750128
+flash_attention_qk_pv_onednn_copied_k_ms=0.742123
+```
+
+TensorFlow eager custom-op benchmark, heuristic tile sizes:
+
+| Shape | Layout | FlashOne attention (ms) | Note |
+|---|---|---:|---|
+| seq64,D32 | copied_transposed | 2.024155 | slower |
+| seq64,D32 | strided_k | 1.512712 | faster |
+| seq128,D32 | copied_transposed | 2.441254 | slower |
+| seq128,D32 | strided_k | 1.972772 | faster |
+| seq256,D32 | copied_transposed | 5.103270 | slower |
+| seq256,D32 | strided_k | 4.727749 | faster |
+| seq128,D64 | copied_transposed | 3.678657 | slower |
+| seq128,D64 | strided_k | 2.201044 | faster |
+
+Interpretation: isolated C++ microbenchmarks can be close and sometimes favor copied K by a tiny margin, but the TensorFlow custom-op path consistently favors strided-K in these samples. Keep copied-K as an experimental/manual path, but default to strided-K.

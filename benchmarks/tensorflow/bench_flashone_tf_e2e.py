@@ -34,7 +34,7 @@ from typing import Any
 import numpy as np
 import tensorflow as tf
 
-from flashone_tf import flashone_attention, select_tile_sizes
+from flashone_tf import flashone_attention, select_qk_tile_layout, select_tile_sizes
 
 
 @dataclass(frozen=True)
@@ -47,6 +47,7 @@ class BenchConfig:
     causal: bool
     query_block: int
     key_block: int
+    qk_tile_layout: str
     warmup: int
     repeat: int
 
@@ -115,6 +116,7 @@ def flashone_attention_tf(q: tf.Tensor, k: tf.Tensor, v: tf.Tensor, cfg: BenchCo
         query_block_size=cfg.query_block,
         key_block_size=cfg.key_block,
         use_onednn=True,
+        qk_tile_layout=cfg.qk_tile_layout,
     )
 
 
@@ -242,7 +244,8 @@ def run_one(cfg: BenchConfig, *, graph: bool) -> BenchRecord:
     print(f"mode: {mode}")
     print(
         f"shape: B={cfg.batch} H={cfg.heads} M=N={cfg.seq} D={cfg.head_dim} "
-        f"E={cfg.embed_dim} causal={cfg.causal} q_block={cfg.query_block} k_block={cfg.key_block}"
+        f"E={cfg.embed_dim} causal={cfg.causal} q_block={cfg.query_block} "
+        f"k_block={cfg.key_block} qk_layout={cfg.qk_tile_layout}"
     )
     print(f"tensorflow_version: {tf.__version__}")
 
@@ -326,6 +329,18 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--ffn-multiplier", type=int, default=4)
     parser.add_argument("--query-block", type=int, default=None, help="Query tile size; default uses FlashOne heuristic")
     parser.add_argument("--key-block", type=int, default=None, help="Key tile size; default uses FlashOne heuristic")
+    parser.add_argument(
+        "--qk-tile-layout",
+        choices=["auto", "strided_k", "copied_transposed"],
+        default="auto",
+        help="QK tile layout; auto uses FlashOne layout heuristic",
+    )
+    parser.add_argument(
+        "--qk-layouts",
+        type=str,
+        default="",
+        help="Comma-separated QK layouts for sweep; defaults to --qk-tile-layout",
+    )
     parser.add_argument("--warmup", type=int, default=3)
     parser.add_argument("--repeat", type=int, default=10)
     parser.add_argument("--no-causal", action="store_true")
@@ -354,11 +369,25 @@ def main() -> None:
         repeat=args.repeat,
     )
     configs: list[BenchConfig]
+    layout_choices = (
+        [part.strip() for part in args.qk_layouts.split(",") if part.strip()]
+        if args.qk_layouts
+        else [args.qk_tile_layout]
+    )
+    resolved_layouts = [
+        select_qk_tile_layout(args.seq, args.seq) if layout == "auto" else layout
+        for layout in layout_choices
+    ]
+    for layout in resolved_layouts:
+        if layout not in {"strided_k", "copied_transposed"}:
+            raise ValueError(f"unsupported qk layout: {layout}")
+
     if args.sweep:
         configs = [
-            BenchConfig(query_block=q_block, key_block=k_block, **base_kwargs)
+            BenchConfig(query_block=q_block, key_block=k_block, qk_tile_layout=layout, **base_kwargs)
             for q_block in args.query_blocks
             for k_block in args.key_blocks
+            for layout in resolved_layouts
             if q_block <= args.seq and k_block <= args.seq
         ]
     else:
@@ -373,8 +402,10 @@ def main() -> None:
             BenchConfig(
                 query_block=query_block,
                 key_block=key_block,
+                qk_tile_layout=layout,
                 **base_kwargs,
             )
+            for layout in resolved_layouts
         ]
 
     records = [run_one(cfg, graph=args.graph) for cfg in configs]
@@ -388,6 +419,7 @@ def main() -> None:
         print(
             "best_flashone_attention: "
             f"q_block={best.config['query_block']} k_block={best.config['key_block']} "
+            f"qk_layout={best.config['qk_tile_layout']} "
             f"flashone_attention_ms={best.flashone_attention_ms:.6f} "
             f"speedup_vs_tf={best.flashone_attention_speedup_vs_tf:.4f}"
         )

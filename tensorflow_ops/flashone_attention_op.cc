@@ -19,6 +19,7 @@ REGISTER_OP("FlashOneAttention")
     .Attr("query_block_size: int = 16")
     .Attr("key_block_size: int = 32")
     .Attr("use_onednn: bool = true")
+    .Attr("qk_tile_layout: string = 'strided_k'")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
         shape_inference::ShapeHandle q;
         shape_inference::ShapeHandle k;
@@ -42,6 +43,9 @@ public:
         OP_REQUIRES_OK(ctx, ctx->GetAttr("query_block_size", &query_block_size_));
         OP_REQUIRES_OK(ctx, ctx->GetAttr("key_block_size", &key_block_size_));
         OP_REQUIRES_OK(ctx, ctx->GetAttr("use_onednn", &use_onednn_));
+        OP_REQUIRES_OK(ctx, ctx->GetAttr("qk_tile_layout", &qk_tile_layout_));
+        OP_REQUIRES(ctx, qk_tile_layout_ == "strided_k" || qk_tile_layout_ == "copied_transposed",
+                    errors::InvalidArgument("qk_tile_layout must be 'strided_k' or 'copied_transposed'"));
     }
 
     void Compute(OpKernelContext* ctx) override {
@@ -81,6 +85,9 @@ public:
         options.causal = causal_;
         options.query_block_size = static_cast<std::size_t>(query_block_size_);
         options.key_block_size = static_cast<std::size_t>(key_block_size_);
+        options.qk_tile_layout = qk_tile_layout_ == "copied_transposed"
+                                     ? flashone::QkTileLayout::CopiedTransposed
+                                     : flashone::QkTileLayout::StridedK;
 #ifdef FLASHONE_HAS_ONEDNN
         if (use_onednn_) {
             options.qk_tile_kernel = flashone::TileKernelKind::OneDnn;
@@ -105,6 +112,7 @@ private:
     int query_block_size_ = 16;
     int key_block_size_ = 32;
     bool use_onednn_ = true;
+    std::string qk_tile_layout_ = "strided_k";
 };
 
 REGISTER_KERNEL_BUILDER(Name("FlashOneAttention").Device(DEVICE_CPU), FlashOneAttentionOp);

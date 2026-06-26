@@ -96,3 +96,34 @@ TensorFlow eager benchmark after strided K, heuristic tiles:
 2. Evaluate copying K transpose vs strided-B as a runtime/heuristic choice. For some shapes, contiguous B may still beat strided B despite the copy.
 3. Batch more work per oneDNN call or move toward a BRGEMM-style primitive to reduce per-tile `execute + wait` overhead.
 4. Start XLA Custom Call minimal path to address graph-mode overhead.
+
+## Follow-up: copied-K vs strided-K dual path
+
+A follow-up patch retained both QK layouts:
+
+- `strided_k`: no K transpose/copy; oneDNN B memory uses strides `{1, head_dim}`.
+- `copied_transposed`: materializes contiguous K^T into workspace, then calls the regular contiguous tile matmul.
+
+The layout is now exposed as:
+
+- C++: `AttentionOptions::qk_tile_layout`
+- TensorFlow op attr: `qk_tile_layout`
+- Python wrapper arg: `qk_tile_layout`
+- Benchmark CLI: `--qk-tile-layout` and `--qk-layouts`
+
+Snapshot results:
+
+| Shape | Layout | FlashOne attention (ms) |
+|---|---|---:|
+| C++ M=N=128,D=64,V=64 | strided_k | 0.750128 |
+| C++ M=N=128,D=64,V=64 | copied_transposed | 0.742123 |
+| TF eager seq64,D32 | strided_k | 1.512712 |
+| TF eager seq64,D32 | copied_transposed | 2.024155 |
+| TF eager seq128,D32 | strided_k | 1.972772 |
+| TF eager seq128,D32 | copied_transposed | 2.441254 |
+| TF eager seq256,D32 | strided_k | 4.727749 |
+| TF eager seq256,D32 | copied_transposed | 5.103270 |
+| TF eager seq128,D64 | strided_k | 2.201044 |
+| TF eager seq128,D64 | copied_transposed | 3.678657 |
+
+Decision: keep `copied_transposed` as an explicit experimental path, but default the TensorFlow wrapper heuristic to `strided_k` because it wins in the current custom-op benchmark path.
