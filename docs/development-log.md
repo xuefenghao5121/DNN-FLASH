@@ -308,3 +308,39 @@ ctest --test-dir build --output-on-failure
 
 Next: Custom Op data-path audit and graph/XLA minimum custom-call investigation.
 
+
+## 2026-06-26 Stage 1B custom-op data path audit + strided K view
+
+- Audited TensorFlow Custom Op data path from TF tensors to FlashOne workspace and oneDNN tile kernels.
+- Findings:
+  - Q/K/V are passed from TensorFlow as raw pointers; no TF-side input copies found.
+  - O is allocated once by TensorFlow and written directly by FlashOne.
+  - Batched/head wrapper uses `thread_local AttentionWorkspace` and raw pointer offsets.
+  - Q and V tile paths are already zero-copy.
+  - K tile still had an explicit per-K-block transpose/copy into `ws.k_tile_t`.
+  - oneDNN cache lock covered both cache lookup and primitive execution.
+- Added `StridedMatmulShape` and `matmul_tile_strided_inplace(...)`.
+- QK now uses a strided B view over row-major K (`[D,Kb]` with strides `{1, head_dim}`), removing explicit K transpose.
+- Narrowed oneDNN cache mutex scope to lookup/insertion; primitive execution now runs outside the cache mutex.
+- Added audit doc: `docs/custom-op-data-path-audit-2026-06-26.md`.
+
+### Verification
+
+```text
+PYTHONPATH=python:. python3 -m pytest -q tests/python tests/tensorflow
+14 passed
+
+ctest --test-dir build --output-on-failure
+100% tests passed, 0 tests failed out of 7
+
+./build/flashone_bench
+max_abs_diff_qk_pv_onednn=1.86265e-08
+flash_attention_qk_pv_onednn_ms=0.772644
+```
+
+TensorFlow eager after strided K:
+
+- seq128, tile 32x64: FlashOne `1.798738ms` vs TF `2.422252ms`.
+- seq256, tile 32x64: FlashOne `4.807103ms` vs TF `1.490950ms`.
+
+Next: evaluate strided-K vs copied-contiguous-K as a shape-dependent heuristic, and investigate oneDNN memory wrapper/stream wait overhead.

@@ -11,6 +11,18 @@ struct MatmulShape {
     std::size_t k;
 };
 
+struct StridedMatmulShape {
+    std::size_t m;
+    std::size_t n;
+    std::size_t k;
+    std::size_t a_stride_m;
+    std::size_t a_stride_k;
+    std::size_t b_stride_k;
+    std::size_t b_stride_n;
+    std::size_t c_stride_m;
+    std::size_t c_stride_n;
+};
+
 enum class TileKernelKind {
     Reference,
     OneDnn,
@@ -22,6 +34,14 @@ const char* tile_kernel_name(TileKernelKind kind);
 void matmul_tile_inplace(TileKernelKind kind,
                          const float* a, const float* b, float* c,
                          const MatmulShape& shape);
+
+// Strided inplace variant for non-contiguous tile views. This avoids materializing
+// simple transposes such as K_tile^T when the source tensor is row-major K[N,D].
+void matmul_tile_strided_inplace(TileKernelKind kind,
+                                 const float* a,
+                                 const float* b,
+                                 float* c,
+                                 const StridedMatmulShape& shape);
 
 // Row-major C = A[M,K] x B[K,N].
 // This is the low-level seam that will later replace QK and PV tile loops.

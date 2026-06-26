@@ -535,23 +535,24 @@ void flash_attention_qk_pv_tile_ws(const float* q,
                 break;
             }
 
-            // Transpose K tile: source [k_cols, D] -> k_tile_t [D, k_cols]
-            for (std::size_t hd = 0; hd < shape.head_dim; ++hd) {
-                for (std::size_t lk = 0; lk < k_cols; ++lk) {
-                    const auto kj = k_block_begin + lk;
-                    ws.k_tile_t[hd * k_cols + lk] = k[kj * shape.head_dim + hd];
-                }
-            }
-
-            // Copy V tile: source [k_cols, Dv] -> v_tile [k_cols, Dv]
-            const float* v_tile_ptr = v + k_block_begin * shape.value_dim;
-
-            // QK tile: score_tile [q_rows, k_cols] = q_tile [q_rows, D] x k_tile_t [D, k_cols]
-            matmul_tile_inplace(options.qk_tile_kernel,
-                                q_tile_ptr,
-                                ws.k_tile_t.data(),
-                                ws.score_tile.data(),
-                                {q_rows, k_cols, shape.head_dim});
+            // QK tile: score_tile [q_rows, k_cols] = q_tile [q_rows, D] x K_view^T [D, k_cols]
+            // K is stored row-major [N, D]. The strided B view removes the previous
+            // explicit K-tile transpose/copy from the inner loop.
+            matmul_tile_strided_inplace(options.qk_tile_kernel,
+                                        q_tile_ptr,
+                                        k + k_block_begin * shape.head_dim,
+                                        ws.score_tile.data(),
+                                        StridedMatmulShape{
+                                            q_rows,
+                                            k_cols,
+                                            shape.head_dim,
+                                            shape.head_dim,
+                                            1,
+                                            1,
+                                            shape.head_dim,
+                                            k_cols,
+                                            1,
+                                        });
 
             // Softmax preprocessing: scale, mask, bias
             for (std::size_t i = 0; i < q_rows; ++i) {
@@ -599,7 +600,9 @@ void flash_attention_qk_pv_tile_ws(const float* q,
                 }
             }
 
-            // PV tile: pv_tile [q_rows, Dv] = p_tile [q_rows, k_cols] x v_tile [k_cols, Dv]
+            // PV tile: pv_tile [q_rows, Dv] = p_tile [q_rows, k_cols] x V_view [k_cols, Dv]
+            // V is already contiguous row-major for each key block.
+            const float* v_tile_ptr = v + k_block_begin * shape.value_dim;
             matmul_tile_inplace(options.pv_tile_kernel,
                                 ws.p_tile.data(),
                                 v_tile_ptr,
