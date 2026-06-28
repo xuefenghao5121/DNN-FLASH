@@ -5,6 +5,10 @@
 
 namespace flashone {
 
+#ifdef FLASHONE_HAS_ONEDNN_BRGEMM
+struct BrgemmKernelContext;
+#endif
+
 struct MatmulShape {
     std::size_t m;
     std::size_t n;
@@ -26,6 +30,7 @@ struct StridedMatmulShape {
 enum class TileKernelKind {
     Reference,
     OneDnn,
+    OneDnnBrgemm,
 };
 
 const char* tile_kernel_name(TileKernelKind kind);
@@ -34,6 +39,15 @@ const char* tile_kernel_name(TileKernelKind kind);
 void matmul_tile_inplace(TileKernelKind kind,
                          const float* a, const float* b, float* c,
                          const MatmulShape& shape);
+
+#ifdef FLASHONE_HAS_ONEDNN_BRGEMM
+// Variant that lets callers provide BRGEMM scratchpad storage for reuse across
+// hot tile iterations. Non-BRGEMM kernels ignore the context.
+void matmul_tile_inplace(TileKernelKind kind,
+                         const float* a, const float* b, float* c,
+                         const MatmulShape& shape,
+                         BrgemmKernelContext& brgemm_context);
+#endif
 
 // Strided inplace variant for non-contiguous tile views. This avoids materializing
 // simple transposes such as K_tile^T when the source tensor is row-major K[N,D].

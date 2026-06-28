@@ -6,6 +6,7 @@
 #   dnnl::dnnl imported target
 
 set(_FLASHONE_DNNL_HINTS
+    "${CMAKE_SOURCE_DIR}/third_party/onednn-debian-3.12/usr"
     "${CMAKE_SOURCE_DIR}/third_party/onednn-local/usr"
     "/usr"
     "/usr/local")

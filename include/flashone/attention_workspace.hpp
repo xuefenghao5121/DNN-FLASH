@@ -4,6 +4,10 @@
 #include <cstdint>
 #include <vector>
 
+#ifdef FLASHONE_HAS_ONEDNN_BRGEMM
+#include "flashone/onednn_brgemm_tile_kernel.hpp"
+#endif
+
 namespace flashone {
 
 /// Pre-allocated workspace buffers for attention kernels.
@@ -26,6 +30,15 @@ struct AttentionWorkspace {
     std::vector<float> new_maxes;
     std::vector<float> block_sums;
     std::vector<std::uint8_t> row_has_valid;
+
+#ifdef FLASHONE_HAS_ONEDNN_BRGEMM
+    // Reused by oneDNN BRGEMM QK/PV tile kernels to avoid per-tile scratchpad
+    // allocation. A single scratchpad is enough because FlashOne executes one
+    // BRGEMM tile at a time inside this workspace. The context tracks oneDNN's
+    // per-thread hardware state so the attention loop can release it once per
+    // workspace call instead of once per tile.
+    BrgemmKernelContext brgemm_context;
+#endif
 
     /// Resize all buffers to fit the given tile dimensions.
     /// Safe to call repeatedly; only allocates if current capacity is insufficient.

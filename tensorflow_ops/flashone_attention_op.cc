@@ -19,6 +19,7 @@ REGISTER_OP("FlashOneAttention")
     .Attr("query_block_size: int = 16")
     .Attr("key_block_size: int = 32")
     .Attr("use_onednn: bool = true")
+    .Attr("tile_kernel: string = 'onednn'")
     .Attr("qk_tile_layout: string = 'strided_k'")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
         shape_inference::ShapeHandle q;
@@ -43,9 +44,15 @@ public:
         OP_REQUIRES_OK(ctx, ctx->GetAttr("query_block_size", &query_block_size_));
         OP_REQUIRES_OK(ctx, ctx->GetAttr("key_block_size", &key_block_size_));
         OP_REQUIRES_OK(ctx, ctx->GetAttr("use_onednn", &use_onednn_));
+        OP_REQUIRES_OK(ctx, ctx->GetAttr("tile_kernel", &tile_kernel_));
         OP_REQUIRES_OK(ctx, ctx->GetAttr("qk_tile_layout", &qk_tile_layout_));
-        OP_REQUIRES(ctx, qk_tile_layout_ == "strided_k" || qk_tile_layout_ == "copied_transposed",
-                    errors::InvalidArgument("qk_tile_layout must be 'strided_k' or 'copied_transposed'"));
+        OP_REQUIRES(ctx, tile_kernel_ == "onednn" || tile_kernel_ == "onednn_brgemm",
+                    errors::InvalidArgument("tile_kernel must be 'onednn' or 'onednn_brgemm'"));
+        OP_REQUIRES(ctx,
+                    qk_tile_layout_ == "strided_k" ||
+                        qk_tile_layout_ == "copied_transposed" ||
+                        qk_tile_layout_ == "brgemm_transformed_k",
+                    errors::InvalidArgument("qk_tile_layout must be 'strided_k', 'copied_transposed', or 'brgemm_transformed_k'"));
     }
 
     void Compute(OpKernelContext* ctx) override {
@@ -85,13 +92,33 @@ public:
         options.causal = causal_;
         options.query_block_size = static_cast<std::size_t>(query_block_size_);
         options.key_block_size = static_cast<std::size_t>(key_block_size_);
-        options.qk_tile_layout = qk_tile_layout_ == "copied_transposed"
-                                     ? flashone::QkTileLayout::CopiedTransposed
-                                     : flashone::QkTileLayout::StridedK;
+        if (qk_tile_layout_ == "copied_transposed") {
+            options.qk_tile_layout = flashone::QkTileLayout::CopiedTransposed;
+        } else if (qk_tile_layout_ == "brgemm_transformed_k") {
+            options.qk_tile_layout = flashone::QkTileLayout::BrgemmTransformedK;
+        } else {
+            options.qk_tile_layout = flashone::QkTileLayout::StridedK;
+        }
 #ifdef FLASHONE_HAS_ONEDNN
         if (use_onednn_) {
-            options.qk_tile_kernel = flashone::TileKernelKind::OneDnn;
-            options.pv_tile_kernel = flashone::TileKernelKind::OneDnn;
+            const auto kernel_kind = tile_kernel_ == "onednn_brgemm"
+                                         ? flashone::TileKernelKind::OneDnnBrgemm
+                                         : flashone::TileKernelKind::OneDnn;
+            options.qk_tile_kernel = kernel_kind;
+            options.pv_tile_kernel = kernel_kind;
+            if (kernel_kind == flashone::TileKernelKind::OneDnnBrgemm) {
+#ifndef FLASHONE_HAS_ONEDNN_BRGEMM
+                ctx->CtxFailure(errors::Internal(
+                    "tile_kernel='onednn_brgemm' requested but FlashOne was built without oneDNN BRGEMM ukernel support"));
+                return;
+#else
+                if (options.qk_tile_layout == flashone::QkTileLayout::StridedK) {
+                    ctx->CtxFailure(errors::InvalidArgument(
+                        "tile_kernel='onednn_brgemm' does not support qk_tile_layout='strided_k'; use 'copied_transposed' or 'brgemm_transformed_k'"));
+                    return;
+                }
+#endif
+            }
         }
 #endif
 
@@ -112,6 +139,7 @@ private:
     int query_block_size_ = 16;
     int key_block_size_ = 32;
     bool use_onednn_ = true;
+    std::string tile_kernel_ = "onednn";
     std::string qk_tile_layout_ = "strided_k";
 };
 

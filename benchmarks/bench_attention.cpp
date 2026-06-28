@@ -75,6 +75,21 @@ int main() {
     };
 #endif
 
+#ifdef FLASHONE_HAS_ONEDNN_BRGEMM
+    auto qk_pv_brgemm_options = qk_pv_onednn_copied_options;
+    qk_pv_brgemm_options.qk_tile_kernel = flashone::TileKernelKind::OneDnnBrgemm;
+    qk_pv_brgemm_options.pv_tile_kernel = flashone::TileKernelKind::OneDnnBrgemm;
+    const auto qk_pv_brgemm = [&]() {
+        return flashone::flash_attention_qk_pv_tile(q, k, v, shape, qk_pv_brgemm_options);
+    };
+
+    auto qk_pv_brgemm_transformed_options = qk_pv_brgemm_options;
+    qk_pv_brgemm_transformed_options.qk_tile_layout = flashone::QkTileLayout::BrgemmTransformedK;
+    const auto qk_pv_brgemm_transformed = [&]() {
+        return flashone::flash_attention_qk_pv_tile(q, k, v, shape, qk_pv_brgemm_transformed_options);
+    };
+#endif
+
     const auto standard_out = standard();
     const auto tiled_out = tiled();
     const auto q_tile_out = q_tile();
@@ -82,6 +97,7 @@ int main() {
     const auto diff = flashone::max_abs_diff(standard_out, tiled_out);
     const auto q_tile_diff = flashone::max_abs_diff(standard_out, q_tile_out);
     const auto qk_pv_tile_diff = flashone::max_abs_diff(standard_out, qk_pv_tile_out);
+
 #ifdef FLASHONE_HAS_ONEDNN
     const auto q_tile_onednn_out = q_tile_onednn();
     const auto qk_pv_onednn_out = qk_pv_onednn();
@@ -91,8 +107,15 @@ int main() {
     const auto qk_pv_onednn_copied_diff =
         flashone::max_abs_diff(standard_out, qk_pv_onednn_copied_out);
 #endif
+#ifdef FLASHONE_HAS_ONEDNN_BRGEMM
+    const auto qk_pv_brgemm_out = qk_pv_brgemm();
+    const auto qk_pv_brgemm_diff = flashone::max_abs_diff(standard_out, qk_pv_brgemm_out);
+    const auto qk_pv_brgemm_transformed_out = qk_pv_brgemm_transformed();
+    const auto qk_pv_brgemm_transformed_diff =
+        flashone::max_abs_diff(standard_out, qk_pv_brgemm_transformed_out);
+#endif
 
-    std::cout << "FlashOne benchmark (row-tiled reference + QK tile backend variants)\n";
+    std::cout << "FlashOne benchmark (row-tiled reference + QK/PV backend variants)\n";
     std::cout << "shape: M=" << shape.query_tokens << " N=" << shape.key_tokens
               << " K=" << shape.head_dim << " D=" << shape.value_dim << " causal=1\n";
     std::cout << "max_abs_diff_row_tiled: " << diff << "\n";
@@ -103,6 +126,12 @@ int main() {
     std::cout << "max_abs_diff_qk_pv_onednn: " << qk_pv_onednn_diff << "\n";
     std::cout << "max_abs_diff_qk_pv_onednn_copied_k: " << qk_pv_onednn_copied_diff << "\n";
 #endif
+#ifdef FLASHONE_HAS_ONEDNN_BRGEMM
+    std::cout << "max_abs_diff_qk_pv_onednn_brgemm: " << qk_pv_brgemm_diff << "\n";
+    std::cout << "max_abs_diff_qk_pv_onednn_brgemm_transformed_k: "
+              << qk_pv_brgemm_transformed_diff << "\n";
+#endif
+
     std::cout << "standard_attention_ms: " << time_ms(standard, repeat) << "\n";
     std::cout << "flash_attention_tiled_ms: " << time_ms(tiled, repeat) << "\n";
     std::cout << "flash_attention_q_tile_ref_ms: " << time_ms(q_tile, repeat) << "\n";
@@ -113,10 +142,20 @@ int main() {
     std::cout << "flash_attention_qk_pv_onednn_copied_k_ms: "
               << time_ms(qk_pv_onednn_copied, repeat) << "\n";
 #endif
+#ifdef FLASHONE_HAS_ONEDNN_BRGEMM
+    std::cout << "flash_attention_qk_pv_onednn_brgemm_ms: "
+              << time_ms(qk_pv_brgemm, repeat) << "\n";
+    std::cout << "flash_attention_qk_pv_onednn_brgemm_transformed_k_ms: "
+              << time_ms(qk_pv_brgemm_transformed, repeat) << "\n";
+#endif
+
     bool ok = diff <= 1e-5f && q_tile_diff <= 1e-5f && qk_pv_tile_diff <= 1e-5f;
 #ifdef FLASHONE_HAS_ONEDNN
     ok = ok && q_tile_onednn_diff <= 1e-5f && qk_pv_onednn_diff <= 1e-5f &&
          qk_pv_onednn_copied_diff <= 1e-5f;
+#endif
+#ifdef FLASHONE_HAS_ONEDNN_BRGEMM
+    ok = ok && qk_pv_brgemm_diff <= 1e-5f && qk_pv_brgemm_transformed_diff <= 1e-5f;
 #endif
     return ok ? 0 : 1;
 }

@@ -69,6 +69,7 @@ def flashone_attention(
     query_block_size: int | None = None,
     key_block_size: int | None = None,
     use_onednn: bool = True,
+    tile_kernel: str = "onednn",
     qk_tile_layout: str | None = None,
     op_path: str | Path | None = None,
 ):
@@ -94,8 +95,12 @@ def flashone_attention(
             raise ValueError("qk_tile_layout must be provided when q/k token dimensions are dynamic")
         qk_tile_layout = select_qk_tile_layout(int(q_shape[2]), int(k_shape[2]))
 
-    if qk_tile_layout not in {"strided_k", "copied_transposed"}:
-        raise ValueError("qk_tile_layout must be 'strided_k' or 'copied_transposed'")
+    if qk_tile_layout not in {"strided_k", "copied_transposed", "brgemm_transformed_k"}:
+        raise ValueError("qk_tile_layout must be 'strided_k', 'copied_transposed', or 'brgemm_transformed_k'")
+    if tile_kernel not in {"onednn", "onednn_brgemm"}:
+        raise ValueError("tile_kernel must be 'onednn' or 'onednn_brgemm'")
+    if tile_kernel == "onednn_brgemm" and qk_tile_layout == "strided_k":
+        raise ValueError("tile_kernel='onednn_brgemm' does not support qk_tile_layout='strided_k'; use 'copied_transposed' or 'brgemm_transformed_k'")
 
     ops = load_flashone_op(op_path)
     return ops.flash_one_attention(
@@ -106,5 +111,6 @@ def flashone_attention(
         query_block_size=query_block_size,
         key_block_size=key_block_size,
         use_onednn=use_onednn,
+        tile_kernel=tile_kernel,
         qk_tile_layout=qk_tile_layout,
     )

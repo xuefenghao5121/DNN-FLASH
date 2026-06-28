@@ -1,6 +1,9 @@
 #include "flashone/attention.hpp"
 
 #include "flashone/tile_kernel.hpp"
+#ifdef FLASHONE_HAS_ONEDNN_BRGEMM
+#include "flashone/onednn_brgemm_tile_kernel.hpp"
+#endif
 
 #include <algorithm>
 #include <cmath>
@@ -548,7 +551,32 @@ void flash_attention_qk_pv_tile_ws(const float* q,
                                     q_tile_ptr,
                                     ws.k_tile_t.data(),
                                     ws.score_tile.data(),
-                                    {q_rows, k_cols, shape.head_dim});
+                                    {q_rows, k_cols, shape.head_dim}
+#ifdef FLASHONE_HAS_ONEDNN_BRGEMM
+                                        ,
+                                    ws.brgemm_context
+#endif
+                );
+            } else if (options.qk_tile_layout == QkTileLayout::BrgemmTransformedK) {
+#ifndef FLASHONE_HAS_ONEDNN_BRGEMM
+                throw std::runtime_error("BRGEMM transformed-K QK layout requires oneDNN BRGEMM support");
+#else
+                if (options.qk_tile_kernel != TileKernelKind::OneDnnBrgemm) {
+                    throw std::runtime_error("BRGEMM transformed-K QK layout requires tile kernel onednn_brgemm");
+                }
+                // K is already a contiguous row-major [k_cols, D] tile in the
+                // source tensor. oneDNN BRGEMM cannot directly consume this as
+                // an arbitrary strided B=[D,k_cols] view, so use the ukernel
+                // transform path with in_pack_type=trans to materialize B once
+                // into the exact contiguous/packed layout expected by BRGEMM.
+                matmul_tile_onednn_brgemm_transposed_b_inplace(
+                    q_tile_ptr,
+                    k + k_block_begin * shape.head_dim,
+                    ws.score_tile.data(),
+                    {q_rows, k_cols, shape.head_dim},
+                    ws.brgemm_context,
+                    false);
+#endif
             } else {
                 // QK tile: score_tile [q_rows, k_cols] = q_tile [q_rows, D] x K_view^T [D, k_cols]
                 // K is stored row-major [N, D]. The strided B view removes the explicit
@@ -623,7 +651,12 @@ void flash_attention_qk_pv_tile_ws(const float* q,
                                 ws.p_tile.data(),
                                 v_tile_ptr,
                                 ws.pv_tile.data(),
-                                {q_rows, shape.value_dim, k_cols});
+                                {q_rows, shape.value_dim, k_cols}
+#ifdef FLASHONE_HAS_ONEDNN_BRGEMM
+                                    ,
+                                ws.brgemm_context
+#endif
+            );
 
             // Accumulate
             for (std::size_t lk = 0; lk < q_rows; ++lk) {
@@ -653,6 +686,12 @@ void flash_attention_qk_pv_tile_ws(const float* q,
             }
         }
     }
+#ifdef FLASHONE_HAS_ONEDNN_BRGEMM
+    if (ws.brgemm_context.hw_context_active) {
+        release_onednn_brgemm_hw_context();
+        ws.brgemm_context.hw_context_active = false;
+    }
+#endif
 }
 
 float max_abs_diff(const std::vector<float>& a, const std::vector<float>& b) {

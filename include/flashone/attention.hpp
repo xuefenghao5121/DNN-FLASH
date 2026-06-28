@@ -33,6 +33,7 @@ using ScoreBiasFn = std::function<float(std::size_t query_index, std::size_t key
 enum class QkTileLayout {
     CopiedTransposed,
     StridedK,
+    BrgemmTransformedK,
 };
 
 struct AttentionOptions {

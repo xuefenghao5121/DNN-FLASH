@@ -76,15 +76,46 @@ if(FLASHONE_ENABLE_ONEDNN)
     target_compile_definitions(flashone_core PUBLIC FLASHONE_HAS_ONEDNN=1)
     target_link_libraries(flashone_core PUBLIC dnnl::dnnl)
 
+    include(CheckCXXSourceCompiles)
+    set(CMAKE_REQUIRED_INCLUDES "${DNNL_INCLUDE_DIR}")
+    set(CMAKE_REQUIRED_LIBRARIES "${DNNL_LIBRARY}")
+    set(CMAKE_REQUIRED_DEFINITIONS "-DDNNL_EXPERIMENTAL_UKERNEL")
+    check_cxx_source_compiles("
+      #include <oneapi/dnnl/dnnl.hpp>
+      #include <oneapi/dnnl/dnnl_ukernel.hpp>
+      int main() {
+        auto pack = dnnl::ukernel::brgemm::get_B_pack_type(
+          dnnl::memory::data_type::f32, dnnl::memory::data_type::f32);
+        return pack == dnnl::ukernel::pack_type::undef;
+      }
+    " FLASHONE_ONEDNN_BRGEMM_COMPILES)
+    unset(CMAKE_REQUIRED_INCLUDES)
+    unset(CMAKE_REQUIRED_LIBRARIES)
+    unset(CMAKE_REQUIRED_DEFINITIONS)
+
+    if(FLASHONE_ONEDNN_BRGEMM_COMPILES)
+      target_sources(flashone_core PRIVATE src/flashone/onednn_brgemm_tile_kernel.cpp)
+      target_compile_definitions(flashone_core PUBLIC FLASHONE_HAS_ONEDNN_BRGEMM=1 DNNL_EXPERIMENTAL_UKERNEL)
+      message(STATUS "oneDNN BRGEMM ukernel API found; enabling FlashOne BRGEMM tile kernel")
+    else()
+      message(STATUS "oneDNN BRGEMM ukernel API not found; BRGEMM tile kernel disabled")
+      if(EXISTS "${CMAKE_SOURCE_DIR}/third_party/onednn-debian-3.12/usr/include/oneapi/dnnl/dnnl_ukernel.hpp")
+        message(STATUS "Hint: if BRGEMM was unexpectedly disabled in an existing build directory, clear cached DNNL_INCLUDE_DIR/DNNL_LIBRARY or configure a fresh build directory")
+      endif()
+    endif()
+
     add_executable(flashone_dnnl_smoke tests/cpp/test_dnnl_smoke.cpp)
     target_link_libraries(flashone_dnnl_smoke PRIVATE dnnl::dnnl)
     set_target_properties(flashone_dnnl_smoke PROPERTIES
-      BUILD_RPATH "${CMAKE_SOURCE_DIR}/third_party/onednn-local/usr/lib/x86_64-linux-gnu")
+      BUILD_RPATH "${CMAKE_SOURCE_DIR}/third_party/onednn-local/usr/lib/x86_64-linux-gnu;${CMAKE_SOURCE_DIR}/third_party/onednn-debian-3.12/usr/lib/x86_64-linux-gnu")
 
     add_executable(flashone_onednn_postops_capability tests/cpp/test_onednn_postops_capability.cpp)
     target_link_libraries(flashone_onednn_postops_capability PRIVATE dnnl::dnnl)
+    if(FLASHONE_ONEDNN_BRGEMM_COMPILES)
+      target_compile_definitions(flashone_onednn_postops_capability PRIVATE FLASHONE_HAS_ONEDNN_BRGEMM=1 DNNL_EXPERIMENTAL_UKERNEL)
+    endif()
     set_target_properties(flashone_onednn_postops_capability PROPERTIES
-      BUILD_RPATH "${CMAKE_SOURCE_DIR}/third_party/onednn-local/usr/lib/x86_64-linux-gnu")
+      BUILD_RPATH "${CMAKE_SOURCE_DIR}/third_party/onednn-local/usr/lib/x86_64-linux-gnu;${CMAKE_SOURCE_DIR}/third_party/onednn-debian-3.12/usr/lib/x86_64-linux-gnu")
   else()
     message(STATUS "oneDNN not found; skipping flashone_dnnl_smoke")
   endif()
@@ -112,7 +143,7 @@ if(FLASHONE_BUILD_TENSORFLOW_OP)
     set_target_properties(flashone_tf_attention PROPERTIES
       PREFIX ""
       OUTPUT_NAME "flashone_tf_attention"
-      BUILD_RPATH "${CMAKE_SOURCE_DIR}/third_party/onednn-local/usr/lib/x86_64-linux-gnu")
+      BUILD_RPATH "${CMAKE_SOURCE_DIR}/third_party/onednn-local/usr/lib/x86_64-linux-gnu;${CMAKE_SOURCE_DIR}/third_party/onednn-debian-3.12/usr/lib/x86_64-linux-gnu")
   else()
     message(STATUS "TensorFlow compile/link flags unavailable; skipping flashone_tf_attention")
   endif()

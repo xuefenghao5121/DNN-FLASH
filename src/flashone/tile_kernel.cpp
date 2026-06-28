@@ -1,5 +1,9 @@
 #include "flashone/tile_kernel.hpp"
 
+#ifdef FLASHONE_HAS_ONEDNN_BRGEMM
+#include "flashone/onednn_brgemm_tile_kernel.hpp"
+#endif
+
 #include <stdexcept>
 
 namespace flashone {
@@ -18,6 +22,8 @@ const char* tile_kernel_name(TileKernelKind kind) {
             return "reference";
         case TileKernelKind::OneDnn:
             return "onednn";
+        case TileKernelKind::OneDnnBrgemm:
+            return "onednn_brgemm";
     }
     return "unknown";
 }
@@ -95,6 +101,13 @@ void matmul_tile_onednn_strided_inplace(const float*, const float*, float*,
 }
 #endif
 
+#ifndef FLASHONE_HAS_ONEDNN_BRGEMM
+void matmul_tile_onednn_brgemm_inplace(const float*, const float*, float*,
+                                       const MatmulShape&) {
+    throw std::runtime_error("FlashOne was built without oneDNN BRGEMM ukernel support");
+}
+#endif
+
 std::vector<float> matmul_tile(TileKernelKind kind,
                                const std::vector<float>& a,
                                const std::vector<float>& b,
@@ -104,6 +117,11 @@ std::vector<float> matmul_tile(TileKernelKind kind,
             return matmul_tile_reference(a, b, shape);
         case TileKernelKind::OneDnn:
             return matmul_tile_onednn(a, b, shape);
+        case TileKernelKind::OneDnnBrgemm: {
+            std::vector<float> c(shape.m * shape.n, 0.0f);
+            matmul_tile_onednn_brgemm_inplace(a.data(), b.data(), c.data(), shape);
+            return c;
+        }
     }
     throw std::invalid_argument("Unknown tile kernel kind");
 }
@@ -117,9 +135,36 @@ void matmul_tile_inplace(TileKernelKind kind, const float* a, const float* b, fl
         case TileKernelKind::OneDnn:
             matmul_tile_onednn_inplace(a, b, c, shape);
             return;
+        case TileKernelKind::OneDnnBrgemm:
+            matmul_tile_onednn_brgemm_inplace(a, b, c, shape);
+            return;
     }
     throw std::invalid_argument("Unknown tile kernel kind");
 }
+
+#ifdef FLASHONE_HAS_ONEDNN_BRGEMM
+void matmul_tile_inplace(TileKernelKind kind,
+                         const float* a,
+                         const float* b,
+                         float* c,
+                         const MatmulShape& shape,
+                         BrgemmKernelContext& brgemm_context) {
+    switch (kind) {
+        case TileKernelKind::Reference:
+            matmul_tile_reference_inplace(a, b, c, shape);
+            return;
+        case TileKernelKind::OneDnn:
+            matmul_tile_onednn_inplace(a, b, c, shape);
+            return;
+        case TileKernelKind::OneDnnBrgemm:
+            matmul_tile_onednn_brgemm_inplace(
+                a, b, c, shape, brgemm_context.scratchpad, false);
+            brgemm_context.hw_context_active = true;
+            return;
+    }
+    throw std::invalid_argument("Unknown tile kernel kind");
+}
+#endif
 
 void matmul_tile_strided_inplace(TileKernelKind kind,
                                  const float* a,
@@ -133,6 +178,8 @@ void matmul_tile_strided_inplace(TileKernelKind kind,
         case TileKernelKind::OneDnn:
             matmul_tile_onednn_strided_inplace(a, b, c, shape);
             return;
+        case TileKernelKind::OneDnnBrgemm:
+            throw std::runtime_error("oneDNN BRGEMM tile kernel requires contiguous A/B/C tiles; strided path is not implemented yet");
     }
     throw std::invalid_argument("Unknown tile kernel kind");
 }
