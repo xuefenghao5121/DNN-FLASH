@@ -128,7 +128,10 @@ if(BUILD_TESTING)
   add_test(NAME flashone_q_tile_attention_tests COMMAND flashone_q_tile_attention_tests)
   add_test(NAME flashone_qk_pv_tile_attention_tests COMMAND flashone_qk_pv_tile_attention_tests)
   add_test(NAME flashone_workspace_attention_tests COMMAND flashone_workspace_attention_tests)
-  add_test(NAME flashone_qk_postops_bench_smoke COMMAND flashone_qk_postops_bench --warmup 1 --repeat 1)
+  add_test(NAME flashone_qk_postops_bench_smoke COMMAND flashone_qk_postops_bench
+    --warmup 1 --repeat 1
+    --output-json "${CMAKE_BINARY_DIR}/stage-1-postops-smoke.json"
+    --output-csv "${CMAKE_BINARY_DIR}/stage-1-postops-smoke.csv")
   set_tests_properties(flashone_qk_postops_bench_smoke PROPERTIES
     WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
   if(TARGET flashone_dnnl_smoke)
