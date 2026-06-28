@@ -74,19 +74,20 @@ The following numbers are from `benchmarks/results/stage-1-postops/cpp-qk-postop
 
 | Shape | Score mod | Ref median ms | oneDNN median ms | Ratio ref/oneDNN | oneDNN p90 ms | oneDNN stddev ms | Max diff |
 |---|---|---:|---:|---:|---:|---:|---:|
-| B=1,H=1,M=N=64,D=32 | none | 0.074008 | 0.027538 | 2.69x | 0.158887 | 0.061577 | 0 |
-| B=1,H=1,M=N=64,D=32 | scale | 0.030995 | 0.028765 | 1.08x | 0.038937 | 0.004488 | 0 |
-| B=1,H=1,M=N=64,D=32 | scale + same-shape bias | 0.034594 | 0.027631 | 1.25x | 0.030460 | 0.004595 | 0 |
-| B=1,H=1,M=N=128,D=64 | none | 0.415606 | 0.049411 | 8.41x | 0.053983 | 0.003841 | 1e-6 |
-| B=1,H=1,M=N=128,D=64 | scale | 0.266820 | 0.027769 | 9.61x | 0.030962 | 0.002400 | 0 |
-| B=1,H=1,M=N=128,D=64 | scale + same-shape bias | 0.267696 | 0.026178 | 10.23x | 0.030363 | 0.001761 | 0 |
-| B=1,H=4,M=N=128,D=64 | none | 1.031782 | 0.101049 | 10.21x | 0.102763 | 0.003819 | 1e-6 |
-| B=1,H=4,M=N=128,D=64 | scale | 1.039085 | 0.100768 | 10.31x | 0.105030 | 0.003827 | 0 |
-| B=1,H=4,M=N=128,D=64 | scale + same-shape bias | 1.075401 | 0.102725 | 10.47x | 0.110570 | 0.003797 | 0 |
+| B=1,H=1,M=N=64,D=32 | none | 0.049367 | 0.028469 | 1.73x | 0.175147 | 0.067248 | 0 |
+| B=1,H=1,M=N=64,D=32 | scale | 0.030861 | 0.020976 | 1.47x | 0.026161 | 0.004426 | 0 |
+| B=1,H=1,M=N=64,D=32 | scale + same-shape bias | 0.034133 | 0.020948 | 1.63x | 0.021634 | 0.000567 | 0 |
+| B=1,H=1,M=N=128,D=64 | none | 0.264887 | 0.036660 | 7.23x | 0.039364 | 0.001378 | 1e-6 |
+| B=1,H=1,M=N=128,D=64 | scale | 0.311027 | 0.025246 | 12.32x | 0.027642 | 0.001308 | 0 |
+| B=1,H=1,M=N=128,D=64 | scale + same-shape bias | 0.266708 | 0.026077 | 10.23x | 0.029837 | 0.001493 | 0 |
+| B=1,H=4,M=N=128,D=64 | none | 1.030267 | 0.096562 | 10.67x | 0.099559 | 0.003383 | 1e-6 |
+| B=1,H=4,M=N=128,D=64 | scale | 1.037449 | 0.123863 | 8.38x | 0.138974 | 0.007708 | 0 |
+| B=1,H=4,M=N=128,D=64 | scale + same-shape bias | 1.080860 | 0.121611 | 8.89x | 0.132892 | 0.005760 | 0 |
 
 Interpretation:
 
-- For small 64x64 tiles, oneDNN is now competitive after primitive-cache hardening, but the `none` case still shows high tail noise (`p90`/`stddev`), so median should be preferred over a single mean when judging micro-optimizations.
+- Reusing oneDNN memory wrappers and rebinding their data handles reduces wrapper-construction overhead for several score-mod cases, especially 64x64 scale/scale+bias and 128x128 H1 scale.
+- For small 64x64 tiles, oneDNN is now competitive after primitive-cache and memory-wrapper hardening, but the `none` case still shows high tail noise (`p90`/`stddev`), so median should be preferred over a single mean when judging micro-optimizations.
 - For 128x128x64 tiles, oneDNN matmul is clearly faster at this isolated QK score-tile level across none/scale/scale+bias.
 - Same-shape additive bias post-op appears viable; no correctness instability was observed.
 - These numbers should not be projected to full attention, TensorFlow eager, or XLA graph paths because online softmax, PV accumulation, TensorFlow op overhead, primitive caching, and stream synchronization are not represented fully here.
@@ -119,9 +120,9 @@ It does not validate:
 
 ## Next-stage Recommendation
 
-Proceed to Stage 1.4 report/gate closure and then decide between two next steps:
+Proceed to the next short RuntimePlan/oneDNN integration hardening step before XLA ABI work. Two bounded options remain:
 
-1. **RuntimePlan integration hardening**: add primitive/cache-key layering for this QK post-op path and reduce per-call primitive/memory wrapper overhead.
-2. **XLA CustomCall minimum ABI investigation**: only after RuntimePlan semantics and benchmark/report schema remain stable.
+1. **Stream wait granularity evaluation**: measure whether moving wait out of per-tile QK calls is safe/valuable in the current synchronous API contract.
+2. **Cache observability**: add debug counters or benchmark-only instrumentation for primitive-cache hits/misses and memory-handle rebinding cost.
 
-My recommendation: do one short RuntimePlan/oneDNN integration hardening pass first, because current C++ numbers show overhead sensitivity at small tiles and the implementation still constructs oneDNN engine/stream/primitive wrappers per call.
+My recommendation: evaluate stream wait granularity next, but keep it as a measurement/design step first. The current public QK tile API writes caller-owned `score` and returns synchronously, so any deferred wait must either stay internal to batched/full attention call boundaries or preserve the existing synchronous tile contract.

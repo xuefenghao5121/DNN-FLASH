@@ -159,19 +159,19 @@ struct CachedQkPostOpsPrimitive {
     dnnl::memory::desc k_md;
     dnnl::memory::desc score_md;
     dnnl::memory::desc bias_md;
+    dnnl::memory q_mem;
+    dnnl::memory k_mem;
+    dnnl::memory score_mem;
+    dnnl::memory bias_mem;
+    std::unordered_map<int, dnnl::memory> execute_args;
     bool has_bias{false};
     int bias_arg{0};
 };
 
 struct ThreadLocalOneDnnQkContext {
-    ThreadLocalOneDnnQkContext() {
-        execute_args.reserve(4);
-    }
-
     dnnl::engine engine{dnnl::engine::kind::cpu, 0};
     dnnl::stream stream{engine};
     std::map<QkPostOpsPrimitiveKey, CachedQkPostOpsPrimitive> primitive_cache;
-    std::unordered_map<int, dnnl::memory> execute_args;
 };
 
 ThreadLocalOneDnnQkContext& thread_local_qk_context() {
@@ -229,6 +229,21 @@ CachedQkPostOpsPrimitive make_cached_primitive(const QkPostOpsPrimitiveKey& key,
                                                 cached.score_md,
                                                 attr);
     cached.primitive = dnnl::matmul(pd);
+
+    cached.q_mem = dnnl::memory(cached.q_md, engine, DNNL_MEMORY_NONE);
+    cached.k_mem = dnnl::memory(cached.k_md, engine, DNNL_MEMORY_NONE);
+    cached.score_mem = dnnl::memory(cached.score_md, engine, DNNL_MEMORY_NONE);
+    if (cached.has_bias) {
+        cached.bias_mem = dnnl::memory(cached.bias_md, engine, DNNL_MEMORY_NONE);
+    }
+
+    cached.execute_args.reserve(cached.has_bias ? 4 : 3);
+    cached.execute_args.emplace(DNNL_ARG_SRC, cached.q_mem);
+    cached.execute_args.emplace(DNNL_ARG_WEIGHTS, cached.k_mem);
+    cached.execute_args.emplace(DNNL_ARG_DST, cached.score_mem);
+    if (cached.has_bias) {
+        cached.execute_args.emplace(cached.bias_arg, cached.bias_mem);
+    }
     return cached;
 }
 
@@ -243,22 +258,16 @@ CachedQkPostOpsPrimitive& get_cached_primitive(ThreadLocalOneDnnQkContext& conte
     return it->second;
 }
 
-void prepare_execute_args(ThreadLocalOneDnnQkContext& context,
-                          const CachedQkPostOpsPrimitive& cached,
-                          const float* q,
-                          const float* k,
-                          float* score,
-                          const QkScoreTilePostOpsInput& post_ops) {
-    auto& args = context.execute_args;
-    args.clear();
-    args.emplace(DNNL_ARG_SRC, dnnl::memory(cached.q_md, context.engine, const_cast<float*>(q)));
-    args.emplace(DNNL_ARG_WEIGHTS, dnnl::memory(cached.k_md, context.engine, const_cast<float*>(k)));
-    args.emplace(DNNL_ARG_DST, dnnl::memory(cached.score_md, context.engine, score));
+void bind_execute_memory_handles(CachedQkPostOpsPrimitive& cached,
+                                 const float* q,
+                                 const float* k,
+                                 float* score,
+                                 const QkScoreTilePostOpsInput& post_ops) {
+    cached.q_mem.set_data_handle(const_cast<float*>(q));
+    cached.k_mem.set_data_handle(const_cast<float*>(k));
+    cached.score_mem.set_data_handle(score);
     if (cached.has_bias) {
-        args.emplace(cached.bias_arg,
-                     dnnl::memory(cached.bias_md,
-                                  context.engine,
-                                  const_cast<float*>(post_ops.additive_bias)));
+        cached.bias_mem.set_data_handle(const_cast<float*>(post_ops.additive_bias));
     }
 }
 
@@ -270,15 +279,15 @@ void qk_score_tile_onednn_post_ops_inplace(const float* q,
                                            const QkScoreTilePostOpsInput& post_ops) {
     const bool apply_bias = has_same_shape_bias(plan, post_ops);
     if (plan.score_mod_plan.has_bias && !apply_bias) {
-        throw std::invalid_argument("Stage 1.6 only supports same-shape additive bias tile post-op");
+        throw std::invalid_argument("Stage 1.8 only supports same-shape additive bias tile post-op");
     }
 
     auto& context = thread_local_qk_context();
     const auto key = make_key(shape, plan, post_ops, apply_bias);
     auto& cached = get_cached_primitive(context, key, plan);
-    prepare_execute_args(context, cached, q, k, score, post_ops);
+    bind_execute_memory_handles(cached, q, k, score, post_ops);
 
-    cached.primitive.execute(context.stream, context.execute_args);
+    cached.primitive.execute(context.stream, cached.execute_args);
     context.stream.wait();
 }
 #endif
