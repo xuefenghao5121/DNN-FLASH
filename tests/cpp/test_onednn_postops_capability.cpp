@@ -359,7 +359,7 @@ std::string json_report(const std::vector<ProbeRow>& rows) {
 std::string markdown_report(const std::vector<ProbeRow>& rows) {
     std::ostringstream oss;
     oss << "# oneDNN Post-ops Capability Probe\n\n";
-    oss << "> Date: 2026-06-27  \n";
+    oss << "> Date: 2026-06-27\n";
     oss << "> Scope: FlashOne Stage 1.1 capability probe only; not a performance benchmark.\n\n";
     oss << "## Results\n\n";
     oss << "| Name | Supported | Method | Compile | Run | Reason |\n";
