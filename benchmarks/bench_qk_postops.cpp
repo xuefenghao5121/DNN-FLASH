@@ -51,6 +51,7 @@ struct Record {
     std::string actual_backend;
     std::string qk_layout;
     std::string score_mod;
+    std::string sync_mode;
     std::string lowering_status;
     std::string fallback_reason;
     bool used_onednn_post_ops;
@@ -195,6 +196,7 @@ flashone::RuntimePlan make_plan(const ShapeCase& shape,
 Record run_record(const ShapeCase& shape,
                   const ScoreCase& score_case,
                   const std::string& requested_backend,
+                  const std::string& sync_mode,
                   int warmup,
                   int repeat) {
     const bool force_reference = requested_backend == "reference";
@@ -233,6 +235,11 @@ Record run_record(const ShapeCase& shape,
     std::vector<float> actual(tile_count * shape.m * shape.n, 0.0f);
     const auto strided_shape = make_strided_shape(shape);
     flashone::QkScoreTileDebugInfo debug;
+    flashone::QkScoreTileExecuteOptions execute_options;
+    const bool defer_wait = requested_backend == "onednn_matmul" && sync_mode == "defer_until_record_end";
+    if (defer_wait) {
+        execute_options.sync_mode = flashone::QkScoreTileSyncMode::DeferUntilExplicitWait;
+    }
 
     auto execute_once = [&]() {
         std::fill(actual.begin(), actual.end(), 0.0f);
@@ -241,13 +248,17 @@ Record run_record(const ShapeCase& shape,
             post_ops.additive_bias = score_case.has_bias ? bias.data() + tile * shape.m * shape.n : nullptr;
             post_ops.additive_bias_stride_m = bias_stride_m;
             post_ops.additive_bias_stride_n = bias_stride_n;
-            flashone::qk_score_tile_inplace(q.data() + tile * shape.m * shape.d,
-                                            k.data() + tile * shape.n * shape.d,
-                                            actual.data() + tile * shape.m * shape.n,
-                                            strided_shape,
-                                            plan,
-                                            post_ops,
-                                            &debug);
+            flashone::qk_score_tile_inplace_with_options(q.data() + tile * shape.m * shape.d,
+                                                         k.data() + tile * shape.n * shape.d,
+                                                         actual.data() + tile * shape.m * shape.n,
+                                                         strided_shape,
+                                                         plan,
+                                                         post_ops,
+                                                         execute_options,
+                                                         &debug);
+        }
+        if (defer_wait) {
+            flashone::qk_score_tile_wait_for_onednn();
         }
         volatile float sink = actual.empty() ? 0.0f : actual[0];
         (void)sink;
@@ -273,6 +284,7 @@ Record run_record(const ShapeCase& shape,
     record.actual_backend = flashone::to_string(debug.backend);
     record.qk_layout = flashone::to_string(plan.qk_layout);
     record.score_mod = plan.score_mod_plan.signature;
+    record.sync_mode = sync_mode;
     record.lowering_status = flashone::to_string(debug.lowering_status);
     record.fallback_reason = flashone::to_string(debug.fallback_reason);
     record.used_onednn_post_ops = debug.used_onednn_post_ops;
@@ -304,7 +316,7 @@ void write_json(const std::string& path, const std::vector<Record>& records) {
     }
     out << std::fixed << std::setprecision(6);
     out << "{\n";
-    out << "  \"schema\": \"flashone.cpp_qk_postops_benchmark.v2\",\n";
+    out << "  \"schema\": \"flashone.cpp_qk_postops_benchmark.v3\",\n";
     out << "  \"benchmark_level\": \"cpp_qk_score_tile\",\n";
     out << "  \"git_commit\": \"" << git_commit_string() << "\",\n";
     out << "  \"one_dnn_version\": \"" << one_dnn_version_string() << "\",\n";
@@ -321,6 +333,7 @@ void write_json(const std::string& path, const std::vector<Record>& records) {
         out << "      \"actual_backend\": \"" << r.actual_backend << "\",\n";
         out << "      \"qk_layout\": \"" << r.qk_layout << "\",\n";
         out << "      \"score_mod\": \"" << r.score_mod << "\",\n";
+        out << "      \"sync_mode\": \"" << r.sync_mode << "\",\n";
         out << "      \"lowering_status\": \"" << r.lowering_status << "\",\n";
         out << "      \"fallback_reason\": \"" << r.fallback_reason << "\",\n";
         out << "      \"used_onednn_post_ops\": " << (r.used_onednn_post_ops ? "true" : "false")
@@ -348,7 +361,7 @@ void write_csv(const std::string& path, const std::vector<Record>& records) {
         throw std::runtime_error("failed to open CSV output: " + path);
     }
     out << "batch,heads,m,n,head_dim,value_dim,requested_backend,actual_backend,qk_layout,"
-           "score_mod,lowering_status,fallback_reason,used_onednn_post_ops,max_abs_diff,"
+           "score_mod,sync_mode,lowering_status,fallback_reason,used_onednn_post_ops,max_abs_diff,"
            "time_ms,time_ms_mean,time_ms_median,time_ms_p90,time_ms_min,time_ms_max,"
            "time_ms_stddev,warmup,repeat\n";
     out << std::fixed << std::setprecision(6);
@@ -371,6 +384,7 @@ int main(int argc, char** argv) {
     std::string csv_path = "benchmarks/results/stage-1-postops/cpp-qk-postops.csv";
     int warmup = 2;
     int repeat = 5;
+    bool include_deferred_wait = false;
 
     for (int i = 1; i < argc; ++i) {
         const std::string arg = argv[i];
@@ -382,6 +396,8 @@ int main(int argc, char** argv) {
             warmup = std::stoi(argv[++i]);
         } else if (arg == "--repeat" && i + 1 < argc) {
             repeat = std::stoi(argv[++i]);
+        } else if (arg == "--include-deferred-wait") {
+            include_deferred_wait = true;
         } else {
             std::cerr << "Unknown argument: " << arg << "\n";
             return 2;
@@ -413,7 +429,20 @@ int main(int argc, char** argv) {
     for (const auto& shape : shapes) {
         for (const auto& score_case : score_cases) {
             for (const auto& backend : backends) {
-                records.push_back(run_record(shape, score_case, backend, warmup, repeat));
+                records.push_back(run_record(shape,
+                                             score_case,
+                                             backend,
+                                             "wait_after_execute",
+                                             warmup,
+                                             repeat));
+                if (include_deferred_wait && backend == "onednn_matmul") {
+                    records.push_back(run_record(shape,
+                                                 score_case,
+                                                 backend,
+                                                 "defer_until_record_end",
+                                                 warmup,
+                                                 repeat));
+                }
             }
         }
     }

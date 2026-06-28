@@ -89,7 +89,8 @@ void qk_score_tile_onednn_post_ops_inplace(const float*,
                                            float*,
                                            const StridedMatmulShape&,
                                            const RuntimePlan&,
-                                           const QkScoreTilePostOpsInput&) {
+                                           const QkScoreTilePostOpsInput&,
+                                           const QkScoreTileExecuteOptions&) {
     throw std::runtime_error("FlashOne was built without oneDNN support");
 }
 #else
@@ -172,6 +173,7 @@ struct ThreadLocalOneDnnQkContext {
     dnnl::engine engine{dnnl::engine::kind::cpu, 0};
     dnnl::stream stream{engine};
     std::map<QkPostOpsPrimitiveKey, CachedQkPostOpsPrimitive> primitive_cache;
+    bool has_pending_work{false};
 };
 
 ThreadLocalOneDnnQkContext& thread_local_qk_context() {
@@ -276,7 +278,8 @@ void qk_score_tile_onednn_post_ops_inplace(const float* q,
                                            float* score,
                                            const StridedMatmulShape& shape,
                                            const RuntimePlan& plan,
-                                           const QkScoreTilePostOpsInput& post_ops) {
+                                           const QkScoreTilePostOpsInput& post_ops,
+                                           const QkScoreTileExecuteOptions& execute_options) {
     const bool apply_bias = has_same_shape_bias(plan, post_ops);
     if (plan.score_mod_plan.has_bias && !apply_bias) {
         throw std::invalid_argument("Stage 1.8 only supports same-shape additive bias tile post-op");
@@ -288,19 +291,34 @@ void qk_score_tile_onednn_post_ops_inplace(const float* q,
     bind_execute_memory_handles(cached, q, k, score, post_ops);
 
     cached.primitive.execute(context.stream, cached.execute_args);
-    context.stream.wait();
+    context.has_pending_work = true;
+    if (execute_options.sync_mode == QkScoreTileSyncMode::WaitAfterExecute) {
+        context.stream.wait();
+        context.has_pending_work = false;
+    }
 }
 #endif
 
 }  // namespace
 
-void qk_score_tile_inplace(const float* q,
-                           const float* k,
-                           float* score,
-                           const StridedMatmulShape& shape,
-                           const RuntimePlan& plan,
-                           const QkScoreTilePostOpsInput& post_ops,
-                           QkScoreTileDebugInfo* debug) {
+void qk_score_tile_wait_for_onednn() {
+#ifdef FLASHONE_HAS_ONEDNN
+    auto& context = thread_local_qk_context();
+    if (context.has_pending_work) {
+        context.stream.wait();
+        context.has_pending_work = false;
+    }
+#endif
+}
+
+void qk_score_tile_inplace_with_options(const float* q,
+                                        const float* k,
+                                        float* score,
+                                        const StridedMatmulShape& shape,
+                                        const RuntimePlan& plan,
+                                        const QkScoreTilePostOpsInput& post_ops,
+                                        const QkScoreTileExecuteOptions& execute_options,
+                                        QkScoreTileDebugInfo* debug) {
     validate_qk_score_tile_args(q, k, score, shape);
 
     const bool can_use_onednn_post_ops =
@@ -310,13 +328,15 @@ void qk_score_tile_inplace(const float* q,
 
     if (can_use_onednn_post_ops) {
         try {
-            qk_score_tile_onednn_post_ops_inplace(q, k, score, shape, plan, post_ops);
+            qk_score_tile_onednn_post_ops_inplace(q, k, score, shape, plan, post_ops, execute_options);
             set_debug(debug,
                       QkBackendKind::OneDnnMatmul,
                       LoweringStatus::LoweredToOneDnnPostOps,
                       FallbackReason::None,
                       plan.score_mod_plan.kind != ScoreModKind::None,
-                      "qk_score_tile: dnnl::matmul + post_ops cached primitive");
+                      execute_options.sync_mode == QkScoreTileSyncMode::WaitAfterExecute
+                          ? "qk_score_tile: dnnl::matmul + post_ops cached primitive"
+                          : "qk_score_tile: dnnl::matmul + post_ops deferred stream wait");
             return;
         } catch (const std::exception& e) {
             matmul_tile_strided_inplace(TileKernelKind::Reference, q, k, score, shape);
@@ -339,6 +359,23 @@ void qk_score_tile_inplace(const float* q,
               plan.fallback_reason,
               false,
               "qk_score_tile: reference fallback");
+}
+
+void qk_score_tile_inplace(const float* q,
+                           const float* k,
+                           float* score,
+                           const StridedMatmulShape& shape,
+                           const RuntimePlan& plan,
+                           const QkScoreTilePostOpsInput& post_ops,
+                           QkScoreTileDebugInfo* debug) {
+    qk_score_tile_inplace_with_options(q,
+                                       k,
+                                       score,
+                                       shape,
+                                       plan,
+                                       post_ops,
+                                       QkScoreTileExecuteOptions{},
+                                       debug);
 }
 
 }  // namespace flashone

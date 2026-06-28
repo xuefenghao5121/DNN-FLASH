@@ -141,6 +141,81 @@ void test_scale_additive_bias_post_op() {
                            /*has_bias=*/true);
 }
 
+void test_deferred_wait_mode_preserves_one_dnn_results() {
+    constexpr std::size_t tile_count = 4;
+    constexpr std::size_t m = 4;
+    constexpr std::size_t n = 5;
+    constexpr std::size_t d = 3;
+    const auto q = make_values(tile_count * m * d, 0.11f);
+    const auto k = make_values(tile_count * n * d, 0.71f);
+    const auto bias = make_values(tile_count * m * n, 1.31f);
+    std::vector<float> actual(tile_count * m * n, 0.0f);
+    std::vector<float> expected(tile_count * m * n, 0.0f);
+
+    auto input = base_input();
+    input.requested_score_mod = flashone::ScoreModKind::ScaleAdditiveBias;
+    input.has_scale = true;
+    input.scale_value = 0.5f;
+    input.requested_bias_kind = flashone::BiasKind::SameShapeTile;
+    const auto plan = flashone::make_runtime_plan(input,
+                                                  /*one_dnn_available=*/true,
+                                                  /*one_dnn_post_ops_available=*/true);
+
+    const flashone::StridedMatmulShape shape{/*m=*/m,
+                                             /*n=*/n,
+                                             /*k=*/d,
+                                             /*a_stride_m=*/d,
+                                             /*a_stride_k=*/1,
+                                             /*b_stride_k=*/1,
+                                             /*b_stride_n=*/d,
+                                             /*c_stride_m=*/n,
+                                             /*c_stride_n=*/1};
+    flashone::QkScoreTileExecuteOptions execute_options;
+    execute_options.sync_mode = flashone::QkScoreTileSyncMode::DeferUntilExplicitWait;
+
+    flashone::QkScoreTileDebugInfo debug;
+    for (std::size_t tile = 0; tile < tile_count; ++tile) {
+        const auto q_offset = tile * m * d;
+        const auto k_offset = tile * n * d;
+        const auto score_offset = tile * m * n;
+        flashone::QkScoreTilePostOpsInput post_ops;
+        post_ops.additive_bias = bias.data() + score_offset;
+        post_ops.additive_bias_stride_m = n;
+        post_ops.additive_bias_stride_n = 1;
+        flashone::qk_score_tile_inplace_with_options(q.data() + q_offset,
+                                                     k.data() + k_offset,
+                                                     actual.data() + score_offset,
+                                                     shape,
+                                                     plan,
+                                                     post_ops,
+                                                     execute_options,
+                                                     &debug);
+        const auto expected_tile = reference_scores(std::vector<float>(q.begin() + static_cast<std::ptrdiff_t>(q_offset),
+                                                                       q.begin() + static_cast<std::ptrdiff_t>(q_offset + m * d)),
+                                                    std::vector<float>(k.begin() + static_cast<std::ptrdiff_t>(k_offset),
+                                                                       k.begin() + static_cast<std::ptrdiff_t>(k_offset + n * d)),
+                                                    bias.data() + score_offset,
+                                                    n,
+                                                    1,
+                                                    0.5f,
+                                                    true,
+                                                    m,
+                                                    n,
+                                                    d);
+        std::copy(expected_tile.begin(), expected_tile.end(), expected.begin() + static_cast<std::ptrdiff_t>(score_offset));
+    }
+    flashone::qk_score_tile_wait_for_onednn();
+
+    require_close(expected, actual, 1e-5f, "deferred wait QK score tile mismatch");
+#ifdef FLASHONE_HAS_ONEDNN
+    require(debug.backend == flashone::QkBackendKind::OneDnnMatmul, "expected deferred oneDNN backend");
+    require(debug.lowering_status == flashone::LoweringStatus::LoweredToOneDnnPostOps,
+            "expected deferred oneDNN post-op lowering");
+    require(debug.fallback_reason == flashone::FallbackReason::None,
+            "unexpected deferred oneDNN fallback reason");
+#endif
+}
+
 void test_reference_fallback_for_broadcast_bias() {
     constexpr std::size_t m = 4;
     constexpr std::size_t n = 5;
@@ -187,6 +262,7 @@ void test_reference_fallback_for_broadcast_bias() {
 int main() {
     test_scale_post_op();
     test_scale_additive_bias_post_op();
+    test_deferred_wait_mode_preserves_one_dnn_results();
     test_reference_fallback_for_broadcast_bias();
     std::cout << "flashone QK score tile tests passed\n";
     return 0;

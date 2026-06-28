@@ -70,26 +70,35 @@ Observed benchmark correctness:
 
 ## Performance Results
 
-The following numbers are from `benchmarks/results/stage-1-postops/cpp-qk-postops.json`, warmup=3, repeat=15. `time_ms` is kept as mean for backward compatibility; the table uses median as the primary comparison metric and includes p90/stddev to expose benchmark noise.
+The following numbers are from `benchmarks/results/stage-1-postops/cpp-qk-postops.json`, warmup=3, repeat=15, generated with `--include-deferred-wait`. `time_ms` is kept as mean for backward compatibility; the table uses median as the primary comparison metric and includes p90/stddev to expose benchmark noise. The default public tile path remains `wait per tile`; `defer per record` is an internal benchmark mode that batches oneDNN stream waits until all B/H tiles in one record have been submitted.
 
-| Shape | Score mod | Ref median ms | oneDNN median ms | Ratio ref/oneDNN | oneDNN p90 ms | oneDNN stddev ms | Max diff |
-|---|---|---:|---:|---:|---:|---:|---:|
-| B=1,H=1,M=N=64,D=32 | none | 0.049367 | 0.028469 | 1.73x | 0.175147 | 0.067248 | 0 |
-| B=1,H=1,M=N=64,D=32 | scale | 0.030861 | 0.020976 | 1.47x | 0.026161 | 0.004426 | 0 |
-| B=1,H=1,M=N=64,D=32 | scale + same-shape bias | 0.034133 | 0.020948 | 1.63x | 0.021634 | 0.000567 | 0 |
-| B=1,H=1,M=N=128,D=64 | none | 0.264887 | 0.036660 | 7.23x | 0.039364 | 0.001378 | 1e-6 |
-| B=1,H=1,M=N=128,D=64 | scale | 0.311027 | 0.025246 | 12.32x | 0.027642 | 0.001308 | 0 |
-| B=1,H=1,M=N=128,D=64 | scale + same-shape bias | 0.266708 | 0.026077 | 10.23x | 0.029837 | 0.001493 | 0 |
-| B=1,H=4,M=N=128,D=64 | none | 1.030267 | 0.096562 | 10.67x | 0.099559 | 0.003383 | 1e-6 |
-| B=1,H=4,M=N=128,D=64 | scale | 1.037449 | 0.123863 | 8.38x | 0.138974 | 0.007708 | 0 |
-| B=1,H=4,M=N=128,D=64 | scale + same-shape bias | 1.080860 | 0.121611 | 8.89x | 0.132892 | 0.005760 | 0 |
+| Shape | Score mod | Sync mode | Ref median ms | oneDNN median ms | Ratio ref/oneDNN | oneDNN p90 ms | oneDNN stddev ms | Max diff |
+|---|---|---|---:|---:|---:|---:|---:|---:|
+| B=1,H=1,M=N=64,D=32 | none | wait per tile | 0.084556 | 0.033219 | 2.55x | 0.166788 | 0.052984 | 0 |
+| B=1,H=1,M=N=64,D=32 | none | defer per record | 0.084556 | 0.028922 | 2.92x | 0.036331 | 0.005555 | 0 |
+| B=1,H=1,M=N=64,D=32 | scale | wait per tile | 0.034507 | 0.032366 | 1.07x | 0.043353 | 0.005674 | 0 |
+| B=1,H=1,M=N=64,D=32 | scale | defer per record | 0.034507 | 0.030903 | 1.12x | 0.037659 | 0.004365 | 0 |
+| B=1,H=1,M=N=64,D=32 | scale + same-shape bias | wait per tile | 0.049052 | 0.032101 | 1.53x | 0.038834 | 0.003478 | 0 |
+| B=1,H=1,M=N=64,D=32 | scale + same-shape bias | defer per record | 0.049052 | 0.031073 | 1.58x | 0.033925 | 0.002001 | 0 |
+| B=1,H=1,M=N=128,D=64 | none | wait per tile | 0.261333 | 0.024851 | 10.52x | 0.029656 | 0.002026 | 1e-6 |
+| B=1,H=1,M=N=128,D=64 | none | defer per record | 0.261333 | 0.024366 | 10.73x | 0.025012 | 0.000658 | 1e-6 |
+| B=1,H=1,M=N=128,D=64 | scale | wait per tile | 0.259253 | 0.024669 | 10.51x | 0.029237 | 0.001871 | 0 |
+| B=1,H=1,M=N=128,D=64 | scale | defer per record | 0.259253 | 0.024257 | 10.69x | 0.025980 | 0.002521 | 0 |
+| B=1,H=1,M=N=128,D=64 | scale + same-shape bias | wait per tile | 0.269568 | 0.024632 | 10.94x | 0.027723 | 0.001827 | 0 |
+| B=1,H=1,M=N=128,D=64 | scale + same-shape bias | defer per record | 0.269568 | 0.023556 | 11.44x | 0.024384 | 0.000664 | 0 |
+| B=1,H=4,M=N=128,D=64 | none | wait per tile | 1.036479 | 0.098304 | 10.54x | 0.102125 | 0.003814 | 1e-6 |
+| B=1,H=4,M=N=128,D=64 | none | defer per record | 1.036479 | 0.095963 | 10.80x | 0.100216 | 0.003871 | 1e-6 |
+| B=1,H=4,M=N=128,D=64 | scale | wait per tile | 1.039304 | 0.097234 | 10.69x | 0.103486 | 0.003261 | 0 |
+| B=1,H=4,M=N=128,D=64 | scale | defer per record | 1.039304 | 0.095443 | 10.89x | 0.097388 | 0.001523 | 0 |
+| B=1,H=4,M=N=128,D=64 | scale + same-shape bias | wait per tile | 1.070353 | 0.097462 | 10.98x | 0.104051 | 0.004722 | 0 |
+| B=1,H=4,M=N=128,D=64 | scale + same-shape bias | defer per record | 1.070353 | 0.098922 | 10.82x | 0.101641 | 0.004377 | 0 |
 
 Interpretation:
 
-- Reusing oneDNN memory wrappers and rebinding their data handles reduces wrapper-construction overhead for several score-mod cases, especially 64x64 scale/scale+bias and 128x128 H1 scale.
-- For small 64x64 tiles, oneDNN is now competitive after primitive-cache and memory-wrapper hardening, but the `none` case still shows high tail noise (`p90`/`stddev`), so median should be preferred over a single mean when judging micro-optimizations.
-- For 128x128x64 tiles, oneDNN matmul is clearly faster at this isolated QK score-tile level across none/scale/scale+bias.
-- Same-shape additive bias post-op appears viable; no correctness instability was observed.
+- Deferred stream wait is correctness-stable in this isolated benchmark (`max_abs_diff <= 1e-6`) and usually reduces p90/stddev, especially for small 64x64 tiles and H=4 scale cases.
+- Median gains are modest because this benchmark submits only one to four QK tiles per record; larger batched/head call boundaries may expose more wait-amortization opportunity.
+- The public `qk_score_tile_inplace(...)` contract remains synchronous. Deferred wait is only exposed through an internal options API and must be explicitly followed by `qk_score_tile_wait_for_onednn()` before reading caller-owned score buffers.
+- Same-shape additive bias post-op remains viable; no correctness instability was observed.
 - These numbers should not be projected to full attention, TensorFlow eager, or XLA graph paths because online softmax, PV accumulation, TensorFlow op overhead, primitive caching, and stream synchronization are not represented fully here.
 
 ## Fallback Summary
@@ -120,9 +129,6 @@ It does not validate:
 
 ## Next-stage Recommendation
 
-Proceed to the next short RuntimePlan/oneDNN integration hardening step before XLA ABI work. Two bounded options remain:
+Proceed to one more short hardening step before XLA ABI work. The best next step is **cache observability / benchmark instrumentation**: expose primitive-cache hit/miss and deferred-wait counters in debug or benchmark-only metadata, so future changes can distinguish primitive creation, memory-handle rebinding, and stream synchronization cost.
 
-1. **Stream wait granularity evaluation**: measure whether moving wait out of per-tile QK calls is safe/valuable in the current synchronous API contract.
-2. **Cache observability**: add debug counters or benchmark-only instrumentation for primitive-cache hits/misses and memory-handle rebinding cost.
-
-My recommendation: evaluate stream wait granularity next, but keep it as a measurement/design step first. The current public QK tile API writes caller-owned `score` and returns synchronously, so any deferred wait must either stay internal to batched/full attention call boundaries or preserve the existing synchronous tile contract.
+Do not make deferred wait the default public QK tile behavior. If deferred wait is promoted later, it should be used only inside a higher-level internal call boundary that owns all submitted score buffers and can guarantee a final wait before softmax/PV reads them.

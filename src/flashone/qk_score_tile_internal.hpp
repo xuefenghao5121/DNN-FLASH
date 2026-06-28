@@ -19,6 +19,26 @@ struct QkScoreTileDebugInfo {
     std::string message;
 };
 
+enum class QkScoreTileSyncMode {
+    WaitAfterExecute,
+    DeferUntilExplicitWait,
+};
+
+struct QkScoreTileExecuteOptions {
+    QkScoreTileSyncMode sync_mode{QkScoreTileSyncMode::WaitAfterExecute};
+};
+
+void qk_score_tile_wait_for_onednn();
+
+void qk_score_tile_inplace_with_options(const float* q,
+                                        const float* k,
+                                        float* score,
+                                        const StridedMatmulShape& shape,
+                                        const RuntimePlan& plan,
+                                        const QkScoreTilePostOpsInput& post_ops,
+                                        const QkScoreTileExecuteOptions& execute_options,
+                                        QkScoreTileDebugInfo* debug = nullptr);
+
 void qk_score_tile_inplace(const float* q,
                            const float* k,
                            float* score,
