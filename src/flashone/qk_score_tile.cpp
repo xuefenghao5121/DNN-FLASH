@@ -4,8 +4,11 @@
 #include <oneapi/dnnl/dnnl.hpp>
 #endif
 
+#include <map>
+#include <mutex>
 #include <sstream>
 #include <stdexcept>
+#include <tuple>
 #include <unordered_map>
 
 namespace flashone {
@@ -103,65 +106,170 @@ dnnl::memory::desc md2(std::size_t dim0,
                                static_cast<dnnl::memory::dim>(stride1)});
 }
 
+struct QkPostOpsPrimitiveKey {
+    std::size_t m;
+    std::size_t n;
+    std::size_t k;
+    std::size_t a_stride_m;
+    std::size_t a_stride_k;
+    std::size_t b_stride_k;
+    std::size_t b_stride_n;
+    std::size_t c_stride_m;
+    std::size_t c_stride_n;
+    bool has_scale;
+    float scale_value;
+    bool has_same_shape_bias;
+    std::size_t bias_stride_m;
+    std::size_t bias_stride_n;
+
+    bool operator<(const QkPostOpsPrimitiveKey& other) const {
+        return std::tie(m,
+                        n,
+                        k,
+                        a_stride_m,
+                        a_stride_k,
+                        b_stride_k,
+                        b_stride_n,
+                        c_stride_m,
+                        c_stride_n,
+                        has_scale,
+                        scale_value,
+                        has_same_shape_bias,
+                        bias_stride_m,
+                        bias_stride_n) <
+               std::tie(other.m,
+                        other.n,
+                        other.k,
+                        other.a_stride_m,
+                        other.a_stride_k,
+                        other.b_stride_k,
+                        other.b_stride_n,
+                        other.c_stride_m,
+                        other.c_stride_n,
+                        other.has_scale,
+                        other.scale_value,
+                        other.has_same_shape_bias,
+                        other.bias_stride_m,
+                        other.bias_stride_n);
+    }
+};
+
+struct CachedQkPostOpsPrimitive {
+    dnnl::matmul primitive;
+    dnnl::memory::desc q_md;
+    dnnl::memory::desc k_md;
+    dnnl::memory::desc score_md;
+    dnnl::memory::desc bias_md;
+    bool has_bias{false};
+    int bias_arg{0};
+};
+
+struct ThreadLocalOneDnnQkContext {
+    dnnl::engine engine{dnnl::engine::kind::cpu, 0};
+    dnnl::stream stream{engine};
+    std::map<QkPostOpsPrimitiveKey, CachedQkPostOpsPrimitive> primitive_cache;
+};
+
+ThreadLocalOneDnnQkContext& thread_local_qk_context() {
+    thread_local ThreadLocalOneDnnQkContext context;
+    return context;
+}
+
+QkPostOpsPrimitiveKey make_key(const StridedMatmulShape& shape,
+                               const RuntimePlan& plan,
+                               const QkScoreTilePostOpsInput& post_ops,
+                               bool apply_bias) {
+    return QkPostOpsPrimitiveKey{shape.m,
+                                 shape.n,
+                                 shape.k,
+                                 shape.a_stride_m,
+                                 shape.a_stride_k,
+                                 shape.b_stride_k,
+                                 shape.b_stride_n,
+                                 shape.c_stride_m,
+                                 shape.c_stride_n,
+                                 plan.score_mod_plan.has_scale,
+                                 plan.score_mod_plan.has_scale ? plan.score_mod_plan.scale_value : 1.0f,
+                                 apply_bias,
+                                 apply_bias ? post_ops.additive_bias_stride_m : 0,
+                                 apply_bias ? post_ops.additive_bias_stride_n : 0};
+}
+
+CachedQkPostOpsPrimitive make_cached_primitive(const QkPostOpsPrimitiveKey& key,
+                                               const RuntimePlan& plan,
+                                               const dnnl::engine& engine) {
+    CachedQkPostOpsPrimitive cached;
+    cached.q_md = md2(key.m, key.k, key.a_stride_m, key.a_stride_k);
+    cached.k_md = md2(key.k, key.n, key.b_stride_k, key.b_stride_n);
+    cached.score_md = md2(key.m, key.n, key.c_stride_m, key.c_stride_n);
+
+    dnnl::primitive_attr attr;
+    dnnl::post_ops ops;
+
+    if (key.has_scale) {
+        ops.append_eltwise(dnnl::algorithm::eltwise_linear,
+                           plan.score_mod_plan.scale_value,
+                           0.0f);
+    }
+    if (key.has_same_shape_bias) {
+        cached.bias_md = md2(key.m, key.n, key.bias_stride_m, key.bias_stride_n);
+        ops.append_binary(dnnl::algorithm::binary_add, cached.bias_md);
+        cached.has_bias = true;
+        cached.bias_arg = DNNL_ARG_ATTR_MULTIPLE_POST_OP(key.has_scale ? 1 : 0) | DNNL_ARG_SRC_1;
+    }
+    attr.set_post_ops(ops);
+
+    const auto pd = dnnl::matmul::primitive_desc(engine,
+                                                cached.q_md,
+                                                cached.k_md,
+                                                cached.score_md,
+                                                attr);
+    cached.primitive = dnnl::matmul(pd);
+    return cached;
+}
+
+CachedQkPostOpsPrimitive& get_cached_primitive(ThreadLocalOneDnnQkContext& context,
+                                               const QkPostOpsPrimitiveKey& key,
+                                               const RuntimePlan& plan) {
+    auto it = context.primitive_cache.find(key);
+    if (it == context.primitive_cache.end()) {
+        it = context.primitive_cache.emplace(
+            key, make_cached_primitive(key, plan, context.engine)).first;
+    }
+    return it->second;
+}
+
 void qk_score_tile_onednn_post_ops_inplace(const float* q,
                                            const float* k,
                                            float* score,
                                            const StridedMatmulShape& shape,
                                            const RuntimePlan& plan,
                                            const QkScoreTilePostOpsInput& post_ops) {
-    dnnl::engine engine(dnnl::engine::kind::cpu, 0);
-    dnnl::stream stream(engine);
-
-    const auto q_md = md2(shape.m, shape.k, shape.a_stride_m, shape.a_stride_k);
-    const auto k_md = md2(shape.k, shape.n, shape.b_stride_k, shape.b_stride_n);
-    const auto score_md = md2(shape.m, shape.n, shape.c_stride_m, shape.c_stride_n);
-
-    dnnl::primitive_attr attr;
-    dnnl::post_ops ops;
-
-    const bool apply_scale = plan.score_mod_plan.has_scale;
     const bool apply_bias = has_same_shape_bias(plan, post_ops);
-
-    if (apply_scale) {
-        ops.append_eltwise(dnnl::algorithm::eltwise_linear,
-                           plan.score_mod_plan.scale_value,
-                           0.0f);
-    }
     if (plan.score_mod_plan.has_bias && !apply_bias) {
-        throw std::invalid_argument("Stage 1.2 only supports same-shape additive bias tile post-op");
+        throw std::invalid_argument("Stage 1.5 only supports same-shape additive bias tile post-op");
     }
-    if (apply_bias) {
-        const auto bias_md = md2(shape.m,
-                                 shape.n,
-                                 post_ops.additive_bias_stride_m,
-                                 post_ops.additive_bias_stride_n);
-        ops.append_binary(dnnl::algorithm::binary_add, bias_md);
-    }
-    attr.set_post_ops(ops);
 
-    const auto pd = dnnl::matmul::primitive_desc(engine, q_md, k_md, score_md, attr);
-    const dnnl::matmul primitive(pd);
+    auto& context = thread_local_qk_context();
+    const auto key = make_key(shape, plan, post_ops, apply_bias);
+    auto& cached = get_cached_primitive(context, key, plan);
 
-    dnnl::memory q_mem(q_md, engine, const_cast<float*>(q));
-    dnnl::memory k_mem(k_md, engine, const_cast<float*>(k));
-    dnnl::memory score_mem(score_md, engine, score);
+    dnnl::memory q_mem(cached.q_md, context.engine, const_cast<float*>(q));
+    dnnl::memory k_mem(cached.k_md, context.engine, const_cast<float*>(k));
+    dnnl::memory score_mem(cached.score_md, context.engine, score);
 
     std::unordered_map<int, dnnl::memory> args{{DNNL_ARG_SRC, q_mem},
                                                {DNNL_ARG_WEIGHTS, k_mem},
                                                {DNNL_ARG_DST, score_mem}};
     dnnl::memory bias_mem;
-    if (apply_bias) {
-        const auto bias_md = md2(shape.m,
-                                 shape.n,
-                                 post_ops.additive_bias_stride_m,
-                                 post_ops.additive_bias_stride_n);
-        bias_mem = dnnl::memory(bias_md, engine, const_cast<float*>(post_ops.additive_bias));
-        const int bias_arg = DNNL_ARG_ATTR_MULTIPLE_POST_OP(apply_scale ? 1 : 0) | DNNL_ARG_SRC_1;
-        args.emplace(bias_arg, bias_mem);
+    if (cached.has_bias) {
+        bias_mem = dnnl::memory(cached.bias_md, context.engine,
+                                const_cast<float*>(post_ops.additive_bias));
+        args.emplace(cached.bias_arg, bias_mem);
     }
 
-    primitive.execute(stream, args);
-    stream.wait();
+    cached.primitive.execute(context.stream, args);
+    context.stream.wait();
 }
 #endif
 
@@ -189,7 +297,7 @@ void qk_score_tile_inplace(const float* q,
                       LoweringStatus::LoweredToOneDnnPostOps,
                       FallbackReason::None,
                       plan.score_mod_plan.kind != ScoreModKind::None,
-                      "qk_score_tile: dnnl::matmul + post_ops");
+                      "qk_score_tile: dnnl::matmul + post_ops cached primitive");
             return;
         } catch (const std::exception& e) {
             matmul_tile_strided_inplace(TileKernelKind::Reference, q, k, score, shape);
