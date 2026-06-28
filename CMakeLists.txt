@@ -61,6 +61,11 @@ if(FLASHONE_ENABLE_ONEDNN)
     target_link_libraries(flashone_dnnl_smoke PRIVATE dnnl::dnnl)
     set_target_properties(flashone_dnnl_smoke PROPERTIES
       BUILD_RPATH "${CMAKE_SOURCE_DIR}/third_party/onednn-local/usr/lib/x86_64-linux-gnu")
+
+    add_executable(flashone_onednn_postops_capability tests/cpp/test_onednn_postops_capability.cpp)
+    target_link_libraries(flashone_onednn_postops_capability PRIVATE dnnl::dnnl)
+    set_target_properties(flashone_onednn_postops_capability PROPERTIES
+      BUILD_RPATH "${CMAKE_SOURCE_DIR}/third_party/onednn-local/usr/lib/x86_64-linux-gnu")
   else()
     message(STATUS "oneDNN not found; skipping flashone_dnnl_smoke")
   endif()
@@ -105,5 +110,10 @@ if(BUILD_TESTING)
   add_test(NAME flashone_workspace_attention_tests COMMAND flashone_workspace_attention_tests)
   if(TARGET flashone_dnnl_smoke)
     add_test(NAME flashone_dnnl_smoke COMMAND flashone_dnnl_smoke)
+  endif()
+  if(TARGET flashone_onednn_postops_capability)
+    add_test(NAME flashone_onednn_postops_capability COMMAND flashone_onednn_postops_capability)
+    set_tests_properties(flashone_onednn_postops_capability PROPERTIES
+      WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
   endif()
 endif()

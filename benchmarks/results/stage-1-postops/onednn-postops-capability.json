@@ -1,0 +1,63 @@
+{
+  "schema": "flashone.onednn_postops_capability.v1",
+  "primitive": "matmul",
+  "dtype": "f32",
+  "rows": [
+    {
+      "name": "matmul.scale",
+      "supported": true,
+      "method": "post_op",
+      "compile_status": "passed",
+      "run_status": "passed",
+      "reason": null
+    },
+    {
+      "name": "matmul.binary_add_same_shape",
+      "supported": true,
+      "method": "post_op",
+      "compile_status": "passed",
+      "run_status": "passed",
+      "reason": null
+    },
+    {
+      "name": "matmul.binary_add_broadcast_row",
+      "supported": true,
+      "method": "post_op",
+      "compile_status": "passed",
+      "run_status": "passed",
+      "reason": null
+    },
+    {
+      "name": "matmul.binary_add_broadcast_col",
+      "supported": true,
+      "method": "post_op",
+      "compile_status": "passed",
+      "run_status": "passed",
+      "reason": null
+    },
+    {
+      "name": "matmul.eltwise_linear",
+      "supported": true,
+      "method": "post_op",
+      "compile_status": "passed",
+      "run_status": "passed",
+      "reason": null
+    },
+    {
+      "name": "ukernel_brgemm.post_ops_boundary",
+      "supported": false,
+      "method": "unsupported",
+      "compile_status": "passed",
+      "run_status": "not_tested",
+      "reason": "oneDNN ukernel BRGEMM API is available, but Stage 1 does not expose post-op support for ukernel BRGEMM; use dnnl::matmul post-ops instead"
+    },
+    {
+      "name": "ukernel_transform.supported_out_ld",
+      "supported": true,
+      "method": "runtime_arg",
+      "compile_status": "passed",
+      "run_status": "passed",
+      "reason": "supported out_ld values observed by integration contract: 16,32,48,64"
+    }
+  ]
+}
