@@ -11,6 +11,7 @@
 #include <fstream>
 #include <iomanip>
 #include <iostream>
+#include <numeric>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -35,6 +36,15 @@ struct ScoreCase {
     bool has_bias;
 };
 
+struct TimingStats {
+    double mean_ms;
+    double median_ms;
+    double p90_ms;
+    double min_ms;
+    double max_ms;
+    double stddev_ms;
+};
+
 struct Record {
     ShapeCase shape;
     std::string requested_backend;
@@ -46,6 +56,12 @@ struct Record {
     bool used_onednn_post_ops;
     float max_abs_diff;
     double time_ms;
+    double time_ms_mean;
+    double time_ms_median;
+    double time_ms_p90;
+    double time_ms_min;
+    double time_ms_max;
+    double time_ms_stddev;
     int warmup;
     int repeat;
 };
@@ -67,6 +83,52 @@ float max_abs_diff(const std::vector<float>& a, const std::vector<float>& b) {
         max_diff = std::max(max_diff, std::fabs(a[i] - b[i]));
     }
     return max_diff;
+}
+
+double median_of_sorted(const std::vector<double>& sorted_samples) {
+    if (sorted_samples.empty()) {
+        throw std::runtime_error("median requires at least one timing sample");
+    }
+    const std::size_t mid = sorted_samples.size() / 2;
+    if (sorted_samples.size() % 2 == 1) {
+        return sorted_samples[mid];
+    }
+    return (sorted_samples[mid - 1] + sorted_samples[mid]) * 0.5;
+}
+
+double nearest_rank_percentile(const std::vector<double>& sorted_samples, double percentile) {
+    if (sorted_samples.empty()) {
+        throw std::runtime_error("percentile requires at least one timing sample");
+    }
+    const auto rank = static_cast<std::size_t>(
+        std::ceil(percentile * static_cast<double>(sorted_samples.size())));
+    const auto index = std::min(sorted_samples.size() - 1, rank == 0 ? 0 : rank - 1);
+    return sorted_samples[index];
+}
+
+TimingStats summarize_samples(const std::vector<double>& samples) {
+    if (samples.empty()) {
+        throw std::runtime_error("benchmark repeat must be positive");
+    }
+
+    std::vector<double> sorted = samples;
+    std::sort(sorted.begin(), sorted.end());
+
+    const double mean = std::accumulate(samples.begin(), samples.end(), 0.0) /
+                        static_cast<double>(samples.size());
+    double variance = 0.0;
+    for (const double sample : samples) {
+        const double delta = sample - mean;
+        variance += delta * delta;
+    }
+    variance /= static_cast<double>(samples.size());
+
+    return TimingStats{/*mean_ms=*/mean,
+                       /*median_ms=*/median_of_sorted(sorted),
+                       /*p90_ms=*/nearest_rank_percentile(sorted, 0.90),
+                       /*min_ms=*/sorted.front(),
+                       /*max_ms=*/sorted.back(),
+                       /*stddev_ms=*/std::sqrt(variance)};
 }
 
 std::string git_commit_string() {
@@ -195,13 +257,15 @@ Record run_record(const ShapeCase& shape,
         execute_once();
     }
 
-    const auto start = std::chrono::steady_clock::now();
+    std::vector<double> samples_ms;
+    samples_ms.reserve(static_cast<std::size_t>(repeat));
     for (int i = 0; i < repeat; ++i) {
+        const auto start = std::chrono::steady_clock::now();
         execute_once();
+        const auto end = std::chrono::steady_clock::now();
+        samples_ms.push_back(std::chrono::duration<double, std::milli>(end - start).count());
     }
-    const auto end = std::chrono::steady_clock::now();
-    const double time_ms = std::chrono::duration<double, std::milli>(end - start).count() /
-                           static_cast<double>(repeat);
+    const auto stats = summarize_samples(samples_ms);
 
     Record record;
     record.shape = shape;
@@ -213,7 +277,13 @@ Record run_record(const ShapeCase& shape,
     record.fallback_reason = flashone::to_string(debug.fallback_reason);
     record.used_onednn_post_ops = debug.used_onednn_post_ops;
     record.max_abs_diff = max_abs_diff(expected, actual);
-    record.time_ms = time_ms;
+    record.time_ms = stats.mean_ms;
+    record.time_ms_mean = stats.mean_ms;
+    record.time_ms_median = stats.median_ms;
+    record.time_ms_p90 = stats.p90_ms;
+    record.time_ms_min = stats.min_ms;
+    record.time_ms_max = stats.max_ms;
+    record.time_ms_stddev = stats.stddev_ms;
     record.warmup = warmup;
     record.repeat = repeat;
     return record;
@@ -234,7 +304,7 @@ void write_json(const std::string& path, const std::vector<Record>& records) {
     }
     out << std::fixed << std::setprecision(6);
     out << "{\n";
-    out << "  \"schema\": \"flashone.cpp_qk_postops_benchmark.v1\",\n";
+    out << "  \"schema\": \"flashone.cpp_qk_postops_benchmark.v2\",\n";
     out << "  \"benchmark_level\": \"cpp_qk_score_tile\",\n";
     out << "  \"git_commit\": \"" << git_commit_string() << "\",\n";
     out << "  \"one_dnn_version\": \"" << one_dnn_version_string() << "\",\n";
@@ -257,6 +327,12 @@ void write_json(const std::string& path, const std::vector<Record>& records) {
             << ",\n";
         out << "      \"max_abs_diff\": " << r.max_abs_diff << ",\n";
         out << "      \"time_ms\": " << r.time_ms << ",\n";
+        out << "      \"time_ms_mean\": " << r.time_ms_mean << ",\n";
+        out << "      \"time_ms_median\": " << r.time_ms_median << ",\n";
+        out << "      \"time_ms_p90\": " << r.time_ms_p90 << ",\n";
+        out << "      \"time_ms_min\": " << r.time_ms_min << ",\n";
+        out << "      \"time_ms_max\": " << r.time_ms_max << ",\n";
+        out << "      \"time_ms_stddev\": " << r.time_ms_stddev << ",\n";
         out << "      \"warmup\": " << r.warmup << ",\n";
         out << "      \"repeat\": " << r.repeat << "\n";
         out << "    }" << (i + 1 == records.size() ? "\n" : ",\n");
@@ -273,7 +349,8 @@ void write_csv(const std::string& path, const std::vector<Record>& records) {
     }
     out << "batch,heads,m,n,head_dim,value_dim,requested_backend,actual_backend,qk_layout,"
            "score_mod,lowering_status,fallback_reason,used_onednn_post_ops,max_abs_diff,"
-           "time_ms,warmup,repeat\n";
+           "time_ms,time_ms_mean,time_ms_median,time_ms_p90,time_ms_min,time_ms_max,"
+           "time_ms_stddev,warmup,repeat\n";
     out << std::fixed << std::setprecision(6);
     for (const auto& r : records) {
         out << r.shape.batch << ',' << r.shape.heads << ',' << r.shape.m << ',' << r.shape.n
@@ -281,7 +358,9 @@ void write_csv(const std::string& path, const std::vector<Record>& records) {
             << r.actual_backend << ',' << r.qk_layout << ',' << r.score_mod << ','
             << r.lowering_status << ',' << r.fallback_reason << ','
             << (r.used_onednn_post_ops ? "true" : "false") << ',' << r.max_abs_diff << ','
-            << r.time_ms << ',' << r.warmup << ',' << r.repeat << '\n';
+            << r.time_ms << ',' << r.time_ms_mean << ',' << r.time_ms_median << ','
+            << r.time_ms_p90 << ',' << r.time_ms_min << ',' << r.time_ms_max << ','
+            << r.time_ms_stddev << ',' << r.warmup << ',' << r.repeat << '\n';
     }
 }
 
@@ -307,6 +386,15 @@ int main(int argc, char** argv) {
             std::cerr << "Unknown argument: " << arg << "\n";
             return 2;
         }
+    }
+
+    if (warmup < 0) {
+        std::cerr << "--warmup must be non-negative\n";
+        return 2;
+    }
+    if (repeat <= 0) {
+        std::cerr << "--repeat must be positive\n";
+        return 2;
     }
 
     const std::vector<ShapeCase> shapes{{1, 1, 64, 64, 32, 32},

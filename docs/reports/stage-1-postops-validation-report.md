@@ -70,24 +70,24 @@ Observed benchmark correctness:
 
 ## Performance Results
 
-The following numbers are from `benchmarks/results/stage-1-postops/cpp-qk-postops.json`, warmup=2, repeat=5.
+The following numbers are from `benchmarks/results/stage-1-postops/cpp-qk-postops.json`, warmup=3, repeat=15. `time_ms` is kept as mean for backward compatibility; the table uses median as the primary comparison metric and includes p90/stddev to expose benchmark noise.
 
-| Shape | Score mod | Reference ms | oneDNN matmul ms | Ratio ref/oneDNN | Max diff |
-|---|---|---:|---:|---:|---:|
-| B=1,H=1,M=N=64,D=32 | none | 0.053614 | 0.161356 | 0.33x | 0 |
-| B=1,H=1,M=N=64,D=32 | scale | 0.034252 | 0.077566 | 0.44x | 0 |
-| B=1,H=1,M=N=64,D=32 | scale + same-shape bias | 0.045339 | 0.046386 | 0.98x | 0 |
-| B=1,H=1,M=N=128,D=64 | none | 0.450281 | 0.072427 | 6.22x | 1e-6 |
-| B=1,H=1,M=N=128,D=64 | scale | 0.263794 | 0.037582 | 7.02x | 0 |
-| B=1,H=1,M=N=128,D=64 | scale + same-shape bias | 0.270311 | 0.041573 | 6.50x | 0 |
-| B=1,H=4,M=N=128,D=64 | none | 1.034173 | 0.129057 | 8.01x | 1e-6 |
-| B=1,H=4,M=N=128,D=64 | scale | 1.040615 | 0.126629 | 8.22x | 0 |
-| B=1,H=4,M=N=128,D=64 | scale + same-shape bias | 1.077850 | 0.134453 | 8.02x | 0 |
+| Shape | Score mod | Ref median ms | oneDNN median ms | Ratio ref/oneDNN | oneDNN p90 ms | oneDNN stddev ms | Max diff |
+|---|---|---:|---:|---:|---:|---:|---:|
+| B=1,H=1,M=N=64,D=32 | none | 0.074008 | 0.027538 | 2.69x | 0.158887 | 0.061577 | 0 |
+| B=1,H=1,M=N=64,D=32 | scale | 0.030995 | 0.028765 | 1.08x | 0.038937 | 0.004488 | 0 |
+| B=1,H=1,M=N=64,D=32 | scale + same-shape bias | 0.034594 | 0.027631 | 1.25x | 0.030460 | 0.004595 | 0 |
+| B=1,H=1,M=N=128,D=64 | none | 0.415606 | 0.049411 | 8.41x | 0.053983 | 0.003841 | 1e-6 |
+| B=1,H=1,M=N=128,D=64 | scale | 0.266820 | 0.027769 | 9.61x | 0.030962 | 0.002400 | 0 |
+| B=1,H=1,M=N=128,D=64 | scale + same-shape bias | 0.267696 | 0.026178 | 10.23x | 0.030363 | 0.001761 | 0 |
+| B=1,H=4,M=N=128,D=64 | none | 1.031782 | 0.101049 | 10.21x | 0.102763 | 0.003819 | 1e-6 |
+| B=1,H=4,M=N=128,D=64 | scale | 1.039085 | 0.100768 | 10.31x | 0.105030 | 0.003827 | 0 |
+| B=1,H=4,M=N=128,D=64 | scale + same-shape bias | 1.075401 | 0.102725 | 10.47x | 0.110570 | 0.003797 | 0 |
 
 Interpretation:
 
-- For small 64x64 tiles, primitive construction / memory wrapper overhead dominates and oneDNN is not consistently faster.
-- For 128x128x64 tiles, oneDNN matmul is clearly faster at this isolated QK score-tile level.
+- For small 64x64 tiles, oneDNN is now competitive after primitive-cache hardening, but the `none` case still shows high tail noise (`p90`/`stddev`), so median should be preferred over a single mean when judging micro-optimizations.
+- For 128x128x64 tiles, oneDNN matmul is clearly faster at this isolated QK score-tile level across none/scale/scale+bias.
 - Same-shape additive bias post-op appears viable; no correctness instability was observed.
 - These numbers should not be projected to full attention, TensorFlow eager, or XLA graph paths because online softmax, PV accumulation, TensorFlow op overhead, primitive caching, and stream synchronization are not represented fully here.
 
