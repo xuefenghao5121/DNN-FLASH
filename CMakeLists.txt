@@ -8,6 +8,15 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 option(FLASHONE_ENABLE_NATIVE "Enable -march=native for local benchmarking" OFF)
 option(FLASHONE_ENABLE_ONEDNN "Build optional oneDNN smoke/integration targets" ON)
 option(FLASHONE_BUILD_TENSORFLOW_OP "Build TensorFlow custom op shared library" ON)
+execute_process(
+  COMMAND git rev-parse --short HEAD
+  WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+  OUTPUT_VARIABLE FLASHONE_GIT_COMMIT
+  OUTPUT_STRIP_TRAILING_WHITESPACE
+  ERROR_QUIET)
+if(NOT FLASHONE_GIT_COMMIT)
+  set(FLASHONE_GIT_COMMIT "unknown")
+endif()
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
 
 add_library(flashone_core
@@ -15,11 +24,12 @@ add_library(flashone_core
   src/flashone/backend.cpp
   src/flashone/score_mod_plan.cpp
   src/flashone/runtime_plan.cpp
+  src/flashone/qk_score_tile.cpp
   src/flashone/tile_kernel.cpp
   src/flashone/attention_workspace.cpp
   src/flashone/batched_attention.cpp
 )
-target_include_directories(flashone_core PUBLIC include)
+target_include_directories(flashone_core PUBLIC include PRIVATE src)
 set_target_properties(flashone_core PROPERTIES POSITION_INDEPENDENT_CODE ON)
 target_compile_options(flashone_core PRIVATE -Wall -Wextra -Wpedantic)
 if(FLASHONE_ENABLE_NATIVE)
@@ -38,6 +48,10 @@ target_link_libraries(flashone_tile_kernel_tests PRIVATE flashone_core)
 add_executable(flashone_runtime_plan_tests tests/cpp/test_runtime_plan.cpp)
 target_link_libraries(flashone_runtime_plan_tests PRIVATE flashone_core)
 
+add_executable(flashone_qk_score_tile_tests tests/cpp/test_qk_score_tile.cpp)
+target_link_libraries(flashone_qk_score_tile_tests PRIVATE flashone_core)
+target_include_directories(flashone_qk_score_tile_tests PRIVATE src)
+
 add_executable(flashone_q_tile_attention_tests tests/cpp/test_q_tile_attention.cpp)
 target_link_libraries(flashone_q_tile_attention_tests PRIVATE flashone_core)
 
@@ -49,6 +63,11 @@ target_link_libraries(flashone_workspace_attention_tests PRIVATE flashone_core)
 
 add_executable(flashone_bench benchmarks/bench_attention.cpp)
 target_link_libraries(flashone_bench PRIVATE flashone_core)
+
+add_executable(flashone_qk_postops_bench benchmarks/bench_qk_postops.cpp)
+target_link_libraries(flashone_qk_postops_bench PRIVATE flashone_core)
+target_include_directories(flashone_qk_postops_bench PRIVATE src)
+target_compile_definitions(flashone_qk_postops_bench PRIVATE FLASHONE_GIT_COMMIT="${FLASHONE_GIT_COMMIT}")
 
 if(FLASHONE_ENABLE_ONEDNN)
   find_package(LocalDnnl QUIET)
@@ -105,9 +124,13 @@ if(BUILD_TESTING)
   add_test(NAME flashone_backend_tests COMMAND flashone_backend_tests)
   add_test(NAME flashone_tile_kernel_tests COMMAND flashone_tile_kernel_tests)
   add_test(NAME flashone_runtime_plan_tests COMMAND flashone_runtime_plan_tests)
+  add_test(NAME flashone_qk_score_tile_tests COMMAND flashone_qk_score_tile_tests)
   add_test(NAME flashone_q_tile_attention_tests COMMAND flashone_q_tile_attention_tests)
   add_test(NAME flashone_qk_pv_tile_attention_tests COMMAND flashone_qk_pv_tile_attention_tests)
   add_test(NAME flashone_workspace_attention_tests COMMAND flashone_workspace_attention_tests)
+  add_test(NAME flashone_qk_postops_bench_smoke COMMAND flashone_qk_postops_bench --warmup 1 --repeat 1)
+  set_tests_properties(flashone_qk_postops_bench_smoke PROPERTIES
+    WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
   if(TARGET flashone_dnnl_smoke)
     add_test(NAME flashone_dnnl_smoke COMMAND flashone_dnnl_smoke)
   endif()
