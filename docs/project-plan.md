@@ -1,3 +1,9 @@
+# Document Status
+
+> Planning draft. Current system design baseline is `docs/system-design.md`.
+> This plan remains useful for long-range goals, but Stage 1 execution must follow `docs/stage-1-postops-validation-plan.md` once frozen.
+> In particular, oneDNN BRGEMM/post-ops are treated as backend capabilities, not the architecture center.
+
 # FlexAttention CPU 加速方案 — 项目计划
 
 > 作者: 小西 (OpenClaw) | 日期: 2026-06-25 | 状态: 待审核
@@ -40,7 +46,7 @@
 | # | 假设 | 验证方式 | 失败应对 |
 |---|------|---------|---------|
 | H1 | XLA Custom Call 能保持 attention 不被拆散 | 写原型, 检查 HLO IR | 改用纯 oneDNN primitive (TF Custom Op) |
-| H2 | oneDNN BRGEMM + post-ops 能表达 online softmax | 扩展 post-op, 跑通 | 自己写 JIT 内核 (基于 Xbyak) |
+| H2 | oneDNN JIT/BRGEMM/post-ops 能承接 QK/PV 与部分 score_mod；online softmax 跨 K-block recurrence 由 FlashOne Execution Engine 管理 | capability probe + QK scale/additive_bias post-ops + correctness/benchmark | 保持 FlashOne epilogue/reference fallback，不把 online recurrence 强塞进 oneDNN post-op |
 | H3 | Flash tiling 在 CPU 上比标准 attention 快 ≥3x | 性能对比测试 | 分析瓶颈, 调整 tile size |
 | H4 | AMX tile 利用率达到 ≥60% | VTune/perf 分析 | 调整 tile 配置 |
 | H5 | Primitive cache 在固定 shape 下 100% 命中 | 多次推理测延迟 | 增加预热策略 |
@@ -60,9 +66,9 @@ Week 1-2: 环境搭建 + 最小原型
   • 验证 H1: 检查 XLA 是否拆散 attention
 
 Week 3: Online Softmax 实现
-  • 扩展 oneDNN post-ops: row_reduce (max/sum)
-  • 实现 online softmax update 逻辑
-  • 验证 H2: 数值正确性 + 寄存器内完成
+  • 先做 oneDNN post-ops capability probe: scale/additive_bias/binary/eltwise 支持边界
+  • 实现 FlashOne online softmax update 逻辑，oneDNN 暂只承接 QK/PV 与可表达 score_mod
+  • 验证 H2: 数值正确性 + fallback reason + post-ops 边界报告
 
 Week 4: 性能验证
   • 性能基准: vs tf.nn.scaled_dot_product_attention
@@ -140,7 +146,7 @@ Week 12: ARM SVE 适配
 ```
 1. flex_attention Python API
    flex_attention(Q, K, V, score_mod=..., block_mask=...)
-   
+
 2. 支持的 score_mod:
    • scale (1/sqrt(d))
    • ALiBi (相对位置偏置)
@@ -172,7 +178,7 @@ Week 12: ARM SVE 适配
 
 ```
 interact(A, B):      matmul / hadamard / custom
-transform(S):        softmax / identity / sigmoid / custom  
+transform(S):        softmax / identity / sigmoid / custom
 aggregate(S, C):     matmul / triu / sum / topk / custom
 ```
 
