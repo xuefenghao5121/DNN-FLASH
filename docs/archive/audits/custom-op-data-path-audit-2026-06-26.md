@@ -1,10 +1,10 @@
-# FlashOne Custom Op Data Path Audit — 2026-06-26
+# OneDNN-Flash Custom Op Data Path Audit — 2026-06-26
 
 ## Scope
 
 Audited the current TensorFlow CPU Custom Op path:
 
-`tensorflow_ops/flashone_attention_op.cc`
+`tensorflow_ops/onednn_flash_attention_op.cc`
 → `flash_attention_batched_qk_pv_tile(...)`
 → `flash_attention_qk_pv_tile_ws(...)`
 → `matmul_tile_*` / oneDNN tile kernels.
@@ -15,7 +15,7 @@ Audited the current TensorFlow CPU Custom Op path:
 
 - Inputs are read from TensorFlow tensors via `q.flat<float>().data()`, `k.flat<float>().data()`, `v.flat<float>().data()`.
 - Output tensor is allocated once by TensorFlow via `ctx->allocate_output(...)`.
-- FlashOne writes directly to `out->flat<float>().data()`.
+- OneDNN-Flash writes directly to `out->flat<float>().data()`.
 - No TensorFlow-side Q/K/V copies were found.
 
 ### Batched/head wrapper
@@ -75,7 +75,7 @@ flash_attention_qk_pv_onednn_ms=0.772644
 
 TensorFlow eager benchmark after strided K, heuristic tiles:
 
-| Seq | Tile | TF attention (ms) | FlashOne attention (ms) | Notes |
+| Seq | Tile | TF attention (ms) | OneDNN-Flash attention (ms) | Notes |
 |---:|---|---:|---:|---|
 | 128 | 32x64 | 2.422252 | 1.798738 | Still faster than TF, slightly slower than best pre-patch noisy sweep `1.645492ms` |
 | 256 | 32x64 | 1.490950 | 4.807103 | Better than pre-patch sweep best `5.207241ms` |
@@ -113,7 +113,7 @@ The layout is now exposed as:
 
 Snapshot results:
 
-| Shape | Layout | FlashOne attention (ms) |
+| Shape | Layout | OneDNN-Flash attention (ms) |
 |---|---|---:|
 | C++ M=N=128,D=64,V=64 | strided_k | 0.750128 |
 | C++ M=N=128,D=64,V=64 | copied_transposed | 0.742123 |

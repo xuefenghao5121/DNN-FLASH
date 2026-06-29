@@ -6,7 +6,7 @@ Accepted
 
 ## Context
 
-FlashOne has several high-risk integration points: XLA pattern preservation, oneDNN post-op expressiveness, online softmax lowering, and hardware-specific kernel performance. Starting directly inside TensorFlow/XLA would make failures hard to isolate.
+OneDNN-Flash has several high-risk integration points: XLA pattern preservation, oneDNN post-op expressiveness, online softmax lowering, and hardware-specific kernel performance. Starting directly inside TensorFlow/XLA would make failures hard to isolate.
 
 ## Decision
 

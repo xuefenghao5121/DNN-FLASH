@@ -1,10 +1,10 @@
-# FlashOne Development Log
+# OneDNN-Flash Development Log
 
 ## 2026-06-25 — Project start
 
 ### Done
 
-- Renamed generic scaffold to `FlashOne`.
+- Renamed generic scaffold to `OneDNN-Flash`.
 - Imported the full project plan into `docs/project-plan.md`.
 - Added requirements, architecture design, and ADR-0001.
 - Implemented standalone C++17 attention core:
@@ -27,7 +27,7 @@ cmake --build build -j
 ctest --test-dir build --output-on-failure
 100% tests passed, 0 tests failed out of 1
 
-./build/flashone_bench
+./build/onednn_flash_bench
 max_abs_diff: 1.86265e-08
 standard_attention_ms: 6.69281
 flash_attention_tiled_ms: 3.44712
@@ -64,7 +64,7 @@ cmake --build build -j
 ctest --test-dir build --output-on-failure
 100% tests passed, 0 tests failed out of 2
 
-./build/flashone_bench
+./build/onednn_flash_bench
 max_abs_diff: 1.86265e-08
 standard_attention_ms: 6.64424
 flash_attention_tiled_ms: 3.11781
@@ -81,7 +81,7 @@ flash_attention_tiled_ms: 3.11781
 - Extracted them under `third_party/onednn-local` using `dpkg-deb -x`.
 - Added `cmake/FindLocalDnnl.cmake` to find either project-local or system oneDNN.
 - Added optional CMake flag `FLASHONE_ENABLE_ONEDNN`.
-- Added `flashone_dnnl_smoke`, a oneDNN matmul runtime smoke test.
+- Added `onednn_flash_dnnl_smoke`, a oneDNN matmul runtime smoke test.
 
 ### Verification
 
@@ -94,11 +94,11 @@ cmake --build build -j
 ctest --test-dir build --output-on-failure
 100% tests passed, 0 tests failed out of 3
 
-./build/flashone_dnnl_smoke
+./build/onednn_flash_dnnl_smoke
 oneDNN smoke matmul max_diff=0
 oneDNN runtime version=3.1.1
 
-./build/flashone_bench
+./build/onednn_flash_bench
 max_abs_diff: 1.86265e-08
 standard_attention_ms: 5.68878
 flash_attention_tiled_ms: 3.01036
@@ -108,11 +108,11 @@ flash_attention_tiled_ms: 3.01036
 
 ### Done
 
-- Added `include/flashone/tile_kernel.hpp` and `src/flashone/tile_kernel.cpp`.
+- Added `include/onednn_flash/tile_kernel.hpp` and `src/onednn_flash/tile_kernel.cpp`.
 - Added `TileKernelKind::{Reference, OneDnn}`.
 - Added row-major `matmul_tile(...)` seam for `C[M,N] = A[M,K] x B[K,N]`.
-- Added oneDNN-backed implementation in `src/flashone/onednn_tile_kernel.cpp`.
-- CMake now links oneDNN into `flashone_core` when available and defines `FLASHONE_HAS_ONEDNN`.
+- Added oneDNN-backed implementation in `src/onednn_flash/onednn_tile_kernel.cpp`.
+- CMake now links oneDNN into `onednn_flash_core` when available and defines `FLASHONE_HAS_ONEDNN`.
 - Added `tests/cpp/test_tile_kernel.cpp` to compare oneDNN tile output against reference output.
 
 ### Verification
@@ -126,14 +126,14 @@ cmake --build build -j
 ctest --test-dir build --output-on-failure
 100% tests passed, 0 tests failed out of 4
 
-./build/flashone_tile_kernel_tests
-flashone tile kernel tests passed
+./build/onednn_flash_tile_kernel_tests
+onednn_flash tile kernel tests passed
 
-./build/flashone_dnnl_smoke
+./build/onednn_flash_dnnl_smoke
 oneDNN smoke matmul max_diff=0
 oneDNN runtime version=3.1.1
 
-./build/flashone_bench
+./build/onednn_flash_bench
 max_abs_diff: 1.86265e-08
 standard_attention_ms: 5.99141
 flash_attention_tiled_ms: 2.99639
@@ -150,7 +150,7 @@ flash_attention_tiled_ms: 2.99639
 - Implemented multi-row Q tile attention:
   - `Q_tile[Qb,H] x K_tile_T[H,Kb] -> score_tile[Qb,Kb]`
   - QK tile multiplication goes through `matmul_tile(...)`
-  - online softmax remains in FlashOne code
+  - online softmax remains in OneDNN-Flash code
   - PV accumulation remains scalar/reference for now
 - Added `tests/cpp/test_q_tile_attention.cpp`.
 - Updated benchmark to report row-tiled, Q-tile reference, and Q-tile oneDNN variants.
@@ -166,10 +166,10 @@ cmake --build build -j
 ctest --test-dir build --output-on-failure
 100% tests passed, 0 tests failed out of 5
 
-./build/flashone_q_tile_attention_tests
-flashone Q-tile attention tests passed
+./build/onednn_flash_q_tile_attention_tests
+onednn_flash Q-tile attention tests passed
 
-./build/flashone_bench
+./build/onednn_flash_bench
 max_abs_diff_row_tiled: 1.86265e-08
 max_abs_diff_q_tile: 1.86265e-08
 max_abs_diff_q_tile_onednn: 1.67638e-08
@@ -188,7 +188,7 @@ flash_attention_q_tile_onednn_ms: 2.07142
 - The new path routes both:
   - QK tile through `options.qk_tile_kernel`
   - PV tile through `options.pv_tile_kernel`
-- Online softmax remains explicit in FlashOne code.
+- Online softmax remains explicit in OneDNN-Flash code.
 - Added `tests/cpp/test_qk_pv_tile_attention.cpp`.
 - Updated benchmark to report QK+PV reference and QK+PV oneDNN variants.
 
@@ -203,10 +203,10 @@ cmake --build build -j
 ctest --test-dir build --output-on-failure
 100% tests passed, 0 tests failed out of 6
 
-./build/flashone_qk_pv_tile_attention_tests
-flashone QK/PV tile attention tests passed
+./build/onednn_flash_qk_pv_tile_attention_tests
+onednn_flash QK/PV tile attention tests passed
 
-./build/flashone_bench
+./build/onednn_flash_bench
 max_abs_diff_row_tiled: 1.86265e-08
 max_abs_diff_q_tile: 1.86265e-08
 max_abs_diff_qk_pv_tile: 1.49012e-08
@@ -221,28 +221,28 @@ flash_attention_qk_pv_onednn_ms: 0.876912
 ```
 ## 2026-06-26 TensorFlow Custom Op MVP
 
-- Added a TensorFlow CPU custom op MVP for FlashOne attention: `tensorflow_ops/flashone_attention_op.cc`.
-- Added batched/head wrapper around the standalone core: `include/flashone/batched_attention.hpp` and `src/flashone/batched_attention.cpp`. The wrapper accepts flat row-major tensors with shapes `Q=[B,H,M,D]`, `K=[B,H,N,D]`, `V=[B,H,N,Dv]`, `O=[B,H,M,Dv]`.
-- Added Python loader package: `python/flashone_tf/`, exposing `flashone_attention(...)` via `tf.load_op_library("build/flashone_tf_attention.so")`.
-- CMake now builds `flashone_tf_attention.so` when TensorFlow compile/link flags are available. `flashone_core` is compiled as PIC so it can be linked into the custom op shared object.
+- Added a TensorFlow CPU custom op MVP for OneDNN-Flash attention: `tensorflow_ops/onednn_flash_attention_op.cc`.
+- Added batched/head wrapper around the standalone core: `include/onednn_flash/batched_attention.hpp` and `src/onednn_flash/batched_attention.cpp`. The wrapper accepts flat row-major tensors with shapes `Q=[B,H,M,D]`, `K=[B,H,N,D]`, `V=[B,H,N,Dv]`, `O=[B,H,M,Dv]`.
+- Added Python loader package: `python/onednn_flash_tf/`, exposing `onednn_flash_attention(...)` via `tf.load_op_library("build/onednn_flash_tf_attention.so")`.
+- CMake now builds `onednn_flash_tf_attention.so` when TensorFlow compile/link flags are available. `onednn_flash_core` is compiled as PIC so it can be linked into the custom op shared object.
 - Current op attributes: `causal`, `query_block_size`, `key_block_size`, `use_onednn`. The MVP is CPU-only, inference-only, float32-only, and does not yet register gradients or XLA lowering.
 - Verified local TensorFlow environment: TensorFlow `2.21.0`; custom op links to local oneDNN `third_party/onednn-local/usr/lib/x86_64-linux-gnu/libdnnl.so.3` (`3.1.1`).
 - Validation passed: `ctest --test-dir build --output-on-failure` -> 6/6 passed; `PYTHONPATH=python python3 -m pytest -q tests/python tests/tensorflow` -> 11 passed.
 ## 2026-06-26 TensorFlow E2E mini benchmark
 
-- Added TensorFlow E2E benchmark harness: `benchmarks/tensorflow/bench_flashone_tf_e2e.py`. It compares TensorFlow materialized attention, FlashOne custom-op attention, and a minimal decoder block with QKV projection, attention, output projection, FFN, residuals, and layer norms.
-- Added E2E correctness test: `tests/tensorflow/test_flashone_tf_e2e.py`, verifying that FlashOne can replace the attention function inside the decoder block.
-- Added `tf.load_op_library` caching in `python/flashone_tf/ops.py`; without this, eager-mode benchmark timing included repeated op-library loading.
-- Added a simple oneDNN tile primitive cache in `src/flashone/onednn_tile_kernel.cpp`, keyed by `(M,N,K)`, so repeated QK/PV tile shapes reuse engine/stream/matmul primitive descriptors.
+- Added TensorFlow E2E benchmark harness: `benchmarks/tensorflow/bench_onednn_flash_tf_e2e.py`. It compares TensorFlow materialized attention, OneDNN-Flash custom-op attention, and a minimal decoder block with QKV projection, attention, output projection, FFN, residuals, and layer norms.
+- Added E2E correctness test: `tests/tensorflow/test_onednn_flash_tf_e2e.py`, verifying that OneDNN-Flash can replace the attention function inside the decoder block.
+- Added `tf.load_op_library` caching in `python/onednn_flash_tf/ops.py`; without this, eager-mode benchmark timing included repeated op-library loading.
+- Added a simple oneDNN tile primitive cache in `src/onednn_flash/onednn_tile_kernel.cpp`, keyed by `(M,N,K)`, so repeated QK/PV tile shapes reuse engine/stream/matmul primitive descriptors.
 - Validation passed: `ctest --test-dir build --output-on-failure` -> 6/6 passed; `PYTHONPATH=python:. python3 -m pytest -q tests/python tests/tensorflow` -> 12 passed.
 - C++ microbenchmark after cache: `flash_attention_qk_pv_onednn_ms: 0.717696` for `M=N=128,K=D=64`, vs previous about `0.87ms`; correctness still `max_abs_diff_qk_pv_onednn=1.86265e-08`.
-- Eager TensorFlow benchmark, `B=1,H=4,D=32,E=128,q_block=16,k_block=32`: seq64 FlashOne attention `1.565ms` vs TensorFlow attention `2.310ms`, decoder `6.705ms` vs `7.336ms`; seq128 FlashOne attention `2.704ms` vs TensorFlow attention `1.769ms`, decoder `10.805ms` vs `7.860ms`; seq256 FlashOne attention `9.353ms` vs TensorFlow attention `1.122ms`, decoder `15.173ms` vs `10.329ms`.
-- Graph-mode sanity (`--graph`) for seq128: TensorFlow attention `0.282851ms`, FlashOne attention `2.752409ms`; decoder `1.409489ms` vs `8.442781ms`. Current Custom Op is usable for E2E replacement but not competitive with TensorFlow graph execution yet.
+- Eager TensorFlow benchmark, `B=1,H=4,D=32,E=128,q_block=16,k_block=32`: seq64 OneDNN-Flash attention `1.565ms` vs TensorFlow attention `2.310ms`, decoder `6.705ms` vs `7.336ms`; seq128 OneDNN-Flash attention `2.704ms` vs TensorFlow attention `1.769ms`, decoder `10.805ms` vs `7.860ms`; seq256 OneDNN-Flash attention `9.353ms` vs TensorFlow attention `1.122ms`, decoder `15.173ms` vs `10.329ms`.
+- Graph-mode sanity (`--graph`) for seq128: TensorFlow attention `0.282851ms`, OneDNN-Flash attention `2.752409ms`; decoder `1.409489ms` vs `8.442781ms`. Current Custom Op is usable for E2E replacement but not competitive with TensorFlow graph execution yet.
 - Key bottleneck now appears to be Custom Op/kernel overhead plus internal tile copies and per-call allocations; next target should be direct Tensor-backed compute path and buffer reuse, before XLA lowering.
 
 ## 2026-06-26 Stage 0 performance baseline + tile sweep harness
 
-- Extended `benchmarks/tensorflow/bench_flashone_tf_e2e.py` with machine-readable outputs:
+- Extended `benchmarks/tensorflow/bench_onednn_flash_tf_e2e.py` with machine-readable outputs:
   - `--output-json`
   - `--output-csv`
 - Added tile sweep mode:
@@ -261,7 +261,7 @@ PYTHONPATH=python:. python3 -m pytest -q tests/python tests/tensorflow
 ctest --test-dir build --output-on-failure
 100% tests passed, 0 tests failed out of 7
 
-./build/flashone_bench
+./build/onednn_flash_bench
 flash_attention_qk_pv_onednn_ms: 0.729506
 max_abs_diff_qk_pv_onednn: 1.86265e-08
 ```
@@ -270,17 +270,17 @@ max_abs_diff_qk_pv_onednn: 1.86265e-08
 
 Default TensorFlow benchmark config: `B=1,H=4,D=32,E=128,causal=true,q_block=16,k_block=32`.
 
-- Eager seq64: FlashOne attention `1.103151ms` vs TF attention `2.401837ms`.
-- Eager seq128: FlashOne attention `2.601036ms` vs TF attention `1.478697ms`.
-- Eager seq256: FlashOne attention `7.303471ms` vs TF attention `0.961287ms`.
-- Graph seq64: FlashOne attention `0.692697ms` vs TF attention `0.254572ms`.
-- Graph seq128: FlashOne attention `2.132716ms` vs TF attention `0.290322ms`.
-- Graph seq256: FlashOne attention `7.646170ms` vs TF attention `0.407576ms`.
+- Eager seq64: OneDNN-Flash attention `1.103151ms` vs TF attention `2.401837ms`.
+- Eager seq128: OneDNN-Flash attention `2.601036ms` vs TF attention `1.478697ms`.
+- Eager seq256: OneDNN-Flash attention `7.303471ms` vs TF attention `0.961287ms`.
+- Graph seq64: OneDNN-Flash attention `0.692697ms` vs TF attention `0.254572ms`.
+- Graph seq128: OneDNN-Flash attention `2.132716ms` vs TF attention `0.290322ms`.
+- Graph seq256: OneDNN-Flash attention `7.646170ms` vs TF attention `0.407576ms`.
 
 Initial tile sweep findings:
 
-- Seq128 eager best: `q_block=32,k_block=32`, FlashOne attention `1.972757ms` (~1.32x faster than default FlashOne seq128).
-- Seq256 eager best: `q_block=32,k_block=64`, FlashOne attention `5.276837ms` (~1.38x faster than default FlashOne seq256, still slower than TF).
+- Seq128 eager best: `q_block=32,k_block=32`, OneDNN-Flash attention `1.972757ms` (~1.32x faster than default OneDNN-Flash seq128).
+- Seq256 eager best: `q_block=32,k_block=64`, OneDNN-Flash attention `5.276837ms` (~1.38x faster than default OneDNN-Flash seq256, still slower than TF).
 
 Next: validate tile heuristic with a wider/repeated sweep, then add default tile selection and continue custom-op overhead audit before XLA Custom Call.
 
@@ -288,11 +288,11 @@ Next: validate tile heuristic with a wider/repeated sweep, then add default tile
 
 - Ran a wider eager tile sweep for seq64/128/256 with `q_block=8,16,32,64` and `k_block=16,32,64,128`.
 - Best attention latencies:
-  - seq64: `q=64,k=64`, FlashOne `0.631580ms` vs TF `2.503426ms`.
-  - seq128: `q=32,k=64`, FlashOne `1.645492ms` vs TF `2.470556ms`.
-  - seq256: `q=32,k=64`, FlashOne `5.207241ms` vs TF `2.768849ms`.
-- Added `select_tile_sizes(query_tokens, key_tokens)` to `python/flashone_tf/ops.py`.
-- Updated `flashone_attention(...)` so omitted block sizes use the heuristic; explicit block sizes still override.
+  - seq64: `q=64,k=64`, OneDNN-Flash `0.631580ms` vs TF `2.503426ms`.
+  - seq128: `q=32,k=64`, OneDNN-Flash `1.645492ms` vs TF `2.470556ms`.
+  - seq256: `q=32,k=64`, OneDNN-Flash `5.207241ms` vs TF `2.768849ms`.
+- Added `select_tile_sizes(query_tokens, key_tokens)` to `python/onednn_flash_tf/ops.py`.
+- Updated `onednn_flash_attention(...)` so omitted block sizes use the heuristic; explicit block sizes still override.
 - Updated benchmark CLI defaults so omitted `--query-block/--key-block` use the same heuristic.
 - Added TensorFlow tests for heuristic selection and default-wrapper correctness.
 
@@ -311,10 +311,10 @@ Next: Custom Op data-path audit and graph/XLA minimum custom-call investigation.
 
 ## 2026-06-26 Stage 1B custom-op data path audit + strided K view
 
-- Audited TensorFlow Custom Op data path from TF tensors to FlashOne workspace and oneDNN tile kernels.
+- Audited TensorFlow Custom Op data path from TF tensors to OneDNN-Flash workspace and oneDNN tile kernels.
 - Findings:
   - Q/K/V are passed from TensorFlow as raw pointers; no TF-side input copies found.
-  - O is allocated once by TensorFlow and written directly by FlashOne.
+  - O is allocated once by TensorFlow and written directly by OneDNN-Flash.
   - Batched/head wrapper uses `thread_local AttentionWorkspace` and raw pointer offsets.
   - Q and V tile paths are already zero-copy.
   - K tile still had an explicit per-K-block transpose/copy into `ws.k_tile_t`.
@@ -333,15 +333,15 @@ PYTHONPATH=python:. python3 -m pytest -q tests/python tests/tensorflow
 ctest --test-dir build --output-on-failure
 100% tests passed, 0 tests failed out of 7
 
-./build/flashone_bench
+./build/onednn_flash_bench
 max_abs_diff_qk_pv_onednn=1.86265e-08
 flash_attention_qk_pv_onednn_ms=0.772644
 ```
 
 TensorFlow eager after strided K:
 
-- seq128, tile 32x64: FlashOne `1.798738ms` vs TF `2.422252ms`.
-- seq256, tile 32x64: FlashOne `4.807103ms` vs TF `1.490950ms`.
+- seq128, tile 32x64: OneDNN-Flash `1.798738ms` vs TF `2.422252ms`.
+- seq256, tile 32x64: OneDNN-Flash `4.807103ms` vs TF `1.490950ms`.
 
 Next: evaluate strided-K vs copied-contiguous-K as a shape-dependent heuristic, and investigate oneDNN memory wrapper/stream wait overhead.
 
@@ -367,7 +367,7 @@ flash_attention_qk_pv_onednn_copied_k_ms=0.742123
 
 TensorFlow eager custom-op benchmark, heuristic tile sizes:
 
-| Shape | Layout | FlashOne attention (ms) | Note |
+| Shape | Layout | OneDNN-Flash attention (ms) | Note |
 |---|---|---:|---|
 | seq64,D32 | copied_transposed | 2.024155 | slower |
 | seq64,D32 | strided_k | 1.512712 | faster |

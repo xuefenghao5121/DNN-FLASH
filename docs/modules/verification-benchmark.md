@@ -107,12 +107,12 @@ median/p50/p90/min/max
 
 ```json
 {
-  "schema_version": "flashone.benchmark.v1",
+  "schema_version": "onednn_flash.benchmark.v1",
   "commit": "<git-sha>",
   "build": {
     "type": "debug|release",
-    "flashone_enable_onednn": true,
-    "flashone_has_onednn_brgemm": true
+    "onednn_flash_enable_onednn": true,
+    "onednn_flash_has_onednn_brgemm": true
   },
   "environment": {
     "cpu": "...",

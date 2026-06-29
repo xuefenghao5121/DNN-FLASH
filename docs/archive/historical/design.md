@@ -5,7 +5,7 @@
 > This document records the early standalone-core bootstrap rationale and must not be used as the main roadmap for new implementation work.
 > When this document conflicts with `docs/system-design.md`, follow `docs/system-design.md`.
 
-# FlashOne Design
+# OneDNN-Flash Design
 
 ## Design principle
 

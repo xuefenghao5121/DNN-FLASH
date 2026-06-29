@@ -1,4 +1,4 @@
-# FlashOne 设计自审报告
+# OneDNN-Flash 设计自审报告
 
 > 日期：2026-06-27
 > 范围：`docs/system-design.md` 与 `docs/modules/*.md`
@@ -12,7 +12,7 @@
 
 ```text
 TensorFlow/XLA 图级语义
-  -> FlashOne RuntimePlan
+  -> OneDNN-Flash RuntimePlan
   -> ScoreMod/BlockMask lowering
   -> oneDNN JIT/post-ops/BRGEMM 执行
   -> correctness + benchmark 验证
@@ -40,8 +40,8 @@ TensorFlow/XLA 图级语义
 
 当前 `docs/system-design.md` 已经明确：
 
-- FlashOne 不是手写 attention kernel。
-- FlashOne 不是简单替换 GEMM。
+- OneDNN-Flash 不是手写 attention kernel。
+- OneDNN-Flash 不是简单替换 GEMM。
 - oneDNN JIT/post-ops/BRGEMM/primitive cache 是核心执行能力。
 - XLA/TF graph integration 是主线，eager Custom Op 只是验证路径。
 - score_mod 与 BlockMask 是一等公民。
@@ -72,7 +72,7 @@ oneDNN BRGEMM + post-ops 能表达 online softmax
 
 ```text
 oneDNN JIT/BRGEMM/post-ops 承接 QK/PV 和部分 score_mod；
-online softmax 的跨 K-block recurrence 短期由 FlashOne Execution Engine 管理。
+online softmax 的跨 K-block recurrence 短期由 OneDNN-Flash Execution Engine 管理。
 ```
 
 ### 1.3 结论
@@ -121,7 +121,7 @@ online softmax 的跨 K-block recurrence 短期由 FlashOne Execution Engine 管
 - matmul primitive attr output scale。
 - post-op eltwise linear。
 - matmul alpha-like 参数，如果 API 支持。
-- FlashOne epilogue fallback。
+- OneDNN-Flash epilogue fallback。
 
 但不同 oneDNN API/primitive/ukernel 支持不一致，必须先做 capability probe。
 
@@ -160,7 +160,7 @@ boundary mask 可以用 additive large-negative value，但 mask 的生成逻辑
 
 - Stage 1 只支持 no mask / causal。
 - causal 分为：full skip、full dense、boundary。
-- boundary mask 先由 FlashOne epilogue 处理，不强行下沉 oneDNN。
+- boundary mask 先由 OneDNN-Flash epilogue 处理，不强行下沉 oneDNN。
 
 ---
 
@@ -258,7 +258,7 @@ BenchmarkConfigKey
 
 - 需要确认当前 TensorFlow/XLA 版本支持的 CustomCall/FFI 方式。
 - 需要明确是 TensorFlow custom call、XLA FFI、PJRT custom call，还是 TF op + XLA lowering。
-- `FlashOneOpaqueConfig` 的 ABI 需要版本号、alignment、endianness、schema。
+- `OneDNN-FlashOpaqueConfig` 的 ABI 需要版本号、alignment、endianness、schema。
 
 建议：
 
@@ -275,7 +275,7 @@ BenchmarkConfigKey
 建议新增：
 
 ```text
-benchmarks/schema/flashone-benchmark.schema.json
+benchmarks/schema/onednn_flash-benchmark.schema.json
 benchmarks/reports/templates/stage-report.md
 ```
 
@@ -326,7 +326,7 @@ oneDNN post-ops 能力验证
 Stage 1 成功不是“性能立刻超过 TF graph”，而是证明：
 
 ```text
-FlashOne score_mod 语义
+OneDNN-Flash score_mod 语义
   -> ScoreModPlan
   -> oneDNN post-ops capability
   -> QK tile execution
@@ -347,7 +347,7 @@ FlashOne score_mod 语义
 | ID | 严重级别 | 问题 | 影响 | 建议 |
 |---|---|---|---|---|
 | DR-001 | P0 | `docs/design.md` 与 `docs/system-design.md` 的开发重心不一致 | 后续实现可能继续按 MVP standalone 思路推进 | 标注旧文档为 historical 或更新为指向 system-design |
-| DR-002 | P0 | `docs/project-plan.md` H2 对 “BRGEMM + post-ops 表达 online softmax” 表述过强 | 技术假设不准确，可能导致错误实现目标 | 改为 oneDNN 承接 QK/PV 和部分 score_mod，online recurrence 由 FlashOne 管理 |
+| DR-002 | P0 | `docs/project-plan.md` H2 对 “BRGEMM + post-ops 表达 online softmax” 表述过强 | 技术假设不准确，可能导致错误实现目标 | 改为 oneDNN 承接 QK/PV 和部分 score_mod，online recurrence 由 OneDNN-Flash 管理 |
 | DR-003 | P0 | Stage 1 未显式要求 Minimal RuntimePlan skeleton 先行 | post-ops 代码可能再次散落 | Stage 1.0 先建 RuntimePlan/ScoreModPlan skeleton |
 | DR-004 | P1 | oneDNN post-ops 能力未先 probe | 可能设计了 API 不支持的路径 | 新增 capability probe 文档和 smoke test |
 | DR-005 | P1 | cache key 未分层 | plan cache/kernel cache 混杂，影响复用 | 拆分 RuntimePlanCacheKey / OneDnnKernelCacheKey / TransformCacheKey |

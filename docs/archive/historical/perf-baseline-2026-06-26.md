@@ -1,10 +1,10 @@
-# FlashOne Performance Baseline — 2026-06-26
+# OneDNN-Flash Performance Baseline — 2026-06-26
 
 This baseline freezes the current TensorFlow custom-op path before the next optimization phase.
 
 ## Environment
 
-- Project path: `/home/huawei/Desktop/home/xuefenghao/workspace/FlashOne`
+- Project path: `/home/huawei/Desktop/home/xuefenghao/workspace/OneDNN-Flash`
 - Git commit during run: recorded in JSON outputs as `2fd3b0e`
 - TensorFlow: `2.21.0`
 - oneDNN: local `third_party/onednn-local`, runtime `3.1.1`
@@ -18,14 +18,14 @@ PYTHONPATH=python:. python3 -m pytest -q tests/python tests/tensorflow
 ctest --test-dir build --output-on-failure
 
 # C++ microbenchmark
-./build/flashone_bench | tee build/benchmarks/cpp_flashone_bench_2026-06-26.txt
+./build/onednn_flash_bench | tee build/benchmarks/cpp_onednn_flash_bench_2026-06-26.txt
 
 # TensorFlow default E2E baseline
 for mode in eager graph; do
   graph_flag=""
   if [ "$mode" = graph ]; then graph_flag="--graph"; fi
   for seq in 64 128 256; do
-    PYTHONPATH=python:. python3 benchmarks/tensorflow/bench_flashone_tf_e2e.py \
+    PYTHONPATH=python:. python3 benchmarks/tensorflow/bench_onednn_flash_tf_e2e.py \
       --seq "$seq" --warmup 3 --repeat 10 $graph_flag \
       --output-json "build/benchmarks/default_${mode}_seq${seq}.json" \
       --output-csv "build/benchmarks/default_${mode}_seq${seq}.csv"
@@ -33,13 +33,13 @@ for mode in eager graph; do
 done
 
 # Initial eager tile sweep
-PYTHONPATH=python:. python3 benchmarks/tensorflow/bench_flashone_tf_e2e.py \
+PYTHONPATH=python:. python3 benchmarks/tensorflow/bench_onednn_flash_tf_e2e.py \
   --seq 128 --warmup 2 --repeat 5 --sweep \
   --query-blocks 8,16,32 --key-blocks 16,32,64 \
   --output-json build/benchmarks/sweep_eager_seq128.json \
   --output-csv build/benchmarks/sweep_eager_seq128.csv
 
-PYTHONPATH=python:. python3 benchmarks/tensorflow/bench_flashone_tf_e2e.py \
+PYTHONPATH=python:. python3 benchmarks/tensorflow/bench_onednn_flash_tf_e2e.py \
   --seq 256 --warmup 2 --repeat 5 --sweep \
   --query-blocks 8,16,32 --key-blocks 16,32,64,128 \
   --output-json build/benchmarks/sweep_eager_seq256.json \
@@ -72,7 +72,7 @@ Shape defaults unless noted: `B=1 H=4 D=32 E=128 causal=true q_block=16 k_block=
 
 ### Eager mode
 
-| Seq | TF attention (ms) | FlashOne attention (ms) | FlashOne speedup vs TF | TF decoder (ms) | FlashOne decoder (ms) |
+| Seq | TF attention (ms) | OneDNN-Flash attention (ms) | OneDNN-Flash speedup vs TF | TF decoder (ms) | OneDNN-Flash decoder (ms) |
 |---:|---:|---:|---:|---:|---:|
 | 64 | 2.401837 | 1.103151 | 2.177x | 4.054715 | 6.862019 |
 | 128 | 1.478697 | 2.601036 | 0.569x | 8.357491 | 11.177019 |
@@ -80,7 +80,7 @@ Shape defaults unless noted: `B=1 H=4 D=32 E=128 causal=true q_block=16 k_block=
 
 ### Graph mode (`tf.function(jit_compile=False)`)
 
-| Seq | TF attention (ms) | FlashOne attention (ms) | FlashOne speedup vs TF | TF decoder (ms) | FlashOne decoder (ms) |
+| Seq | TF attention (ms) | OneDNN-Flash attention (ms) | OneDNN-Flash speedup vs TF | TF decoder (ms) | OneDNN-Flash decoder (ms) |
 |---:|---:|---:|---:|---:|---:|
 | 64 | 0.254572 | 0.692697 | 0.368x | 0.907308 | 1.370904 |
 | 128 | 0.290322 | 2.132716 | 0.136x | 1.151255 | 5.968866 |
@@ -90,25 +90,25 @@ Shape defaults unless noted: `B=1 H=4 D=32 E=128 causal=true q_block=16 k_block=
 
 ### Seq128 eager
 
-Best FlashOne attention latency in this sweep:
+Best OneDNN-Flash attention latency in this sweep:
 
 - `q_block=32, k_block=32`
-- FlashOne attention: `1.972757ms`
+- OneDNN-Flash attention: `1.972757ms`
 - TF attention in same run: `2.510026ms`
 - Speedup vs TF in same run: `1.272x`
 
-Compared with default seq128 eager FlashOne latency `2.601036ms`, this is about `1.32x` faster.
+Compared with default seq128 eager OneDNN-Flash latency `2.601036ms`, this is about `1.32x` faster.
 
 ### Seq256 eager
 
-Best FlashOne attention latency in this sweep:
+Best OneDNN-Flash attention latency in this sweep:
 
 - `q_block=32, k_block=64`
-- FlashOne attention: `5.276837ms`
+- OneDNN-Flash attention: `5.276837ms`
 - TF attention in same run: `2.541132ms`
 - Speedup vs TF in same run: `0.482x`
 
-Compared with default seq256 eager FlashOne latency `7.303471ms`, this is about `1.38x` faster, but still slower than TensorFlow.
+Compared with default seq256 eager OneDNN-Flash latency `7.303471ms`, this is about `1.38x` faster, but still slower than TensorFlow.
 
 ## Interpretation
 
@@ -137,15 +137,15 @@ Artifacts:
 - `build/benchmarks/sweep2_eager_seq128.json/csv`
 - `build/benchmarks/sweep2_eager_seq256.json/csv`
 
-Best FlashOne attention latencies:
+Best OneDNN-Flash attention latencies:
 
-| Seq | Best q_block | Best k_block | FlashOne attention (ms) | TF attention in same run (ms) | Speedup vs TF |
+| Seq | Best q_block | Best k_block | OneDNN-Flash attention (ms) | TF attention in same run (ms) | Speedup vs TF |
 |---:|---:|---:|---:|---:|---:|
 | 64 | 64 | 64 | 0.631580 | 2.503426 | 3.964x |
 | 128 | 32 | 64 | 1.645492 | 2.470556 | 1.501x |
 | 256 | 32 | 64 | 5.207241 | 2.768849 | 0.532x |
 
-Implemented Python wrapper heuristic in `python/flashone_tf/ops.py`:
+Implemented Python wrapper heuristic in `python/onednn_flash_tf/ops.py`:
 
 - `seq <= 64`: `q_block=64,k_block=64` capped by actual query/key length.
 - otherwise: `q_block=32,k_block=64` capped by actual query/key length.

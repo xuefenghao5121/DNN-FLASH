@@ -8,7 +8,7 @@
 
 ## 1. 模块目标
 
-oneDNN Integration 模块负责把 FlashOne 的执行计划映射到 oneDNN 的高性能执行能力：
+oneDNN Integration 模块负责把 OneDNN-Flash 的执行计划映射到 oneDNN 的高性能执行能力：
 
 - JIT primitive。
 - matmul primitive。
@@ -194,7 +194,7 @@ else:
 
 ### Task 2：QK scale post-op
 
-目标：把 `score *= scale` 从 FlashOne C++ 后处理下沉到 oneDNN post-op。
+目标：把 `score *= scale` 从 OneDNN-Flash C++ 后处理下沉到 oneDNN post-op。
 
 验收：
 
@@ -238,7 +238,7 @@ else:
 
 ## 8. 当前结论
 
-下一步不应继续直接扩大 BRGEMM 微优化，而应先实现 oneDNN post-ops 能力验证，尤其是 QK 的 `scale + additive_bias` 下沉。这是回到 FlashOne 最初设计原则的关键动作。
+下一步不应继续直接扩大 BRGEMM 微优化，而应先实现 oneDNN post-ops 能力验证，尤其是 QK 的 `scale + additive_bias` 下沉。这是回到 OneDNN-Flash 最初设计原则的关键动作。
 
 ---
 

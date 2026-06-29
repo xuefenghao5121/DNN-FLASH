@@ -1,4 +1,4 @@
-# FlashOne System Design Freeze Checklist
+# OneDNN-Flash System Design Freeze Checklist
 
 > 状态：Stage 1.4 gate closed for review
 > 日期：2026-06-28
@@ -82,7 +82,7 @@ docs/reports/stage-1-gate-closure-2026-06-28.md
 
 - [x] 已取消 “oneDNN BRGEMM + post-ops 表达 online softmax” 作为硬假设。
 - [x] 已改为 oneDNN 承接 QK/PV 与部分 score_mod。
-- [x] online softmax 跨 K-block recurrence 归 FlashOne Execution Engine 管理。
+- [x] online softmax 跨 K-block recurrence 归 OneDNN-Flash Execution Engine 管理。
 
 ### P0: Stage 1 缺 Minimal RuntimePlan skeleton
 
@@ -136,14 +136,14 @@ benchmark JSON/CSV/report
 Stage 1 已完成/落盘：
 
 ```text
-include/flashone/runtime_plan.hpp
-include/flashone/score_mod_plan.hpp
-src/flashone/runtime_plan.cpp
-src/flashone/score_mod_plan.cpp
+include/onednn_flash/runtime_plan.hpp
+include/onednn_flash/score_mod_plan.hpp
+src/onednn_flash/runtime_plan.cpp
+src/onednn_flash/score_mod_plan.cpp
 tests/cpp/test_runtime_plan.cpp
 tests/cpp/test_onednn_postops_capability.cpp
-src/flashone/qk_score_tile.cpp
-src/flashone/qk_score_tile_internal.hpp
+src/onednn_flash/qk_score_tile.cpp
+src/onednn_flash/qk_score_tile_internal.hpp
 tests/cpp/test_qk_score_tile.cpp
 benchmarks/bench_qk_postops.cpp
 benchmarks/results/stage-1-postops/onednn-postops-capability.json
@@ -183,7 +183,7 @@ shape-by-shape BRGEMM sweep as main work
 冻结边界：
 
 - Stage 1 仅支持 `none`、`scale`、`additive_bias`、`scale + additive_bias`。
-- 不能表达的 score_mod 必须 fallback 到 FlashOne epilogue/reference。
+- 不能表达的 score_mod 必须 fallback 到 OneDNN-Flash epilogue/reference。
 - callback/custom score_mod 不作为性能路径。
 
 ### 4.3 BlockMask Planner
@@ -191,7 +191,7 @@ shape-by-shape BRGEMM sweep as main work
 冻结边界：
 
 - Stage 1 仅支持 no mask / causal。
-- causal boundary mask 由 FlashOne epilogue 处理。
+- causal boundary mask 由 OneDNN-Flash epilogue 处理。
 - 不把 boundary mask 强塞进 oneDNN post-op。
 
 ### 4.4 Runtime Planner

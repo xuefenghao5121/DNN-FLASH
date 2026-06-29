@@ -31,8 +31,8 @@ score_mod semantics
 Stage 1 允许进入 public header 的内容：
 
 ```text
-include/flashone/runtime_plan.hpp
-include/flashone/score_mod_plan.hpp
+include/onednn_flash/runtime_plan.hpp
+include/onednn_flash/score_mod_plan.hpp
 ```
 
 只放稳定语义结构：
@@ -55,9 +55,9 @@ include/flashone/score_mod_plan.hpp
 Stage 1 内部实现可以使用：
 
 ```text
-src/flashone/runtime_plan_internal.hpp
-src/flashone/onednn_postops_internal.hpp
-src/flashone/onednn_capability_internal.hpp
+src/onednn_flash/runtime_plan_internal.hpp
+src/onednn_flash/onednn_postops_internal.hpp
+src/onednn_flash/onednn_capability_internal.hpp
 ```
 
 可包含：
@@ -154,7 +154,7 @@ No new layout enum may be added in Stage 1 without updating the design documents
 enum class LoweringStatus {
   LoweredToOneDnnPostOps,
   PartiallyLowered,
-  FlashOneEpilogue,
+  OneDNN-FlashEpilogue,
   ReferenceFallback,
   Unsupported,
 };
@@ -231,10 +231,10 @@ unsupported:<reason>
 |---|---|---|---|
 | none | N/A | LoweredToOneDnnPostOps | None |
 | scale | supported | LoweredToOneDnnPostOps | None |
-| scale | unsupported | FlashOneEpilogue | UnsupportedPostOp |
+| scale | unsupported | OneDNN-FlashEpilogue | UnsupportedPostOp |
 | additive same-shape | supported | LoweredToOneDnnPostOps | None |
-| additive same-shape | unsupported | FlashOneEpilogue | UnsupportedPostOp |
-| broadcast bias | not Stage 1 | FlashOneEpilogue | UnsupportedBroadcast |
+| additive same-shape | unsupported | OneDNN-FlashEpilogue | UnsupportedPostOp |
+| broadcast bias | not Stage 1 | OneDNN-FlashEpilogue | UnsupportedBroadcast |
 | callback/custom | not Stage 1 | ReferenceFallback | UnsupportedScoreMod |
 
 ---
@@ -256,7 +256,7 @@ Stage 1 rules:
 
 - `None`: dense path.
 - `Causal`: tile skip/dense/boundary allowed.
-- causal boundary tile mask is handled by FlashOne epilogue, not oneDNN post-op.
+- causal boundary tile mask is handled by OneDNN-Flash epilogue, not oneDNN post-op.
 
 ### 5.1 Causal boundary tile mask data structure
 
@@ -334,7 +334,7 @@ struct RuntimePlan {
   LoweringStatus qk_lowering_status;
 
   bool uses_onednn_post_ops;
-  bool requires_flashone_epilogue;
+  bool requires_onednn_flash_epilogue;
   bool requires_mask_tile_generator;
 
   FallbackReason fallback_reason;
@@ -412,7 +412,7 @@ tests/cpp/test_onednn_postops_capability.cpp
 Optional probe binary name:
 
 ```text
-flashone_onednn_postops_capability
+onednn_flash_onednn_postops_capability
 ```
 
 Report output:
@@ -514,7 +514,7 @@ Stage 1.2/1.3 tests:
 tests/cpp/test_qk_postops.cpp
 ```
 
-TensorFlow smoke remains isolated if it loads a shared library registering `FlashOneAttention`.
+TensorFlow smoke remains isolated if it loads a shared library registering `OneDNN-FlashAttention`.
 
 ---
 

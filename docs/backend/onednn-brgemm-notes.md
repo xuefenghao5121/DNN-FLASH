@@ -7,7 +7,7 @@ Checked on 2026-06-25:
 - C++ compiler: GCC 13.3.0
 - CMake: 4.3.1
 - TBB headers are present under `/usr/include/oneapi/tbb`
-- System oneDNN development headers/libraries were not installed, but Ubuntu packages were downloaded and extracted locally under `third_party/onednn-local`. The optional CMake path now builds `flashone_dnnl_smoke` and verifies oneDNN matmul at runtime.
+- System oneDNN development headers/libraries were not installed, but Ubuntu packages were downloaded and extracted locally under `third_party/onednn-local`. The optional CMake path now builds `onednn_flash_dnnl_smoke` and verifies oneDNN matmul at runtime.
 - A newer Debian oneDNN 3.12.1 package with experimental ukernel headers is also available under `third_party/onednn-debian-3.12`. CMake now searches this path before `third_party/onednn-local`, and enables the BRGEMM ukernel tile path when `<oneapi/dnnl/dnnl_ukernel.hpp>` plus `dnnl::ukernel::brgemm` compile successfully.
 
 The repository still keeps oneDNN integration behind a backend seam so the reference path continues to build when oneDNN is unavailable.
@@ -51,7 +51,7 @@ cmake --build build-onednn -j
 
 Exact flags may need adjustment for the oneDNN version available on the target machine.
 
-## FlashOne mapping
+## OneDNN-Flash mapping
 
 For each query tile and key tile:
 
@@ -70,7 +70,7 @@ For each query tile and key tile:
 
 ## Current CMake integration
 
-`FLASHONE_ENABLE_ONEDNN` is available and defaults to `ON`. If `dnnl.hpp`/`dnnl.h` plus `libdnnl` are found, FlashOne builds `flashone_dnnl_smoke`; otherwise it prints a status message and skips that target.
+`FLASHONE_ENABLE_ONEDNN` is available and defaults to `ON`. If `dnnl.hpp`/`dnnl.h` plus `libdnnl` are found, OneDNN-Flash builds `onednn_flash_dnnl_smoke`; otherwise it prints a status message and skips that target.
 
 ## Immediate next coding step
 
@@ -104,7 +104,7 @@ Next replacement step:
 
 1. Introduce a tile policy that extracts Q/K/V tile views without copying where possible.
 2. Replace the QK dot loop in `flash_attention_tiled` with `matmul_tile` for multi-row query tiles.
-3. Keep online softmax in FlashOne code between QK and PV.
+3. Keep online softmax in OneDNN-Flash code between QK and PV.
 4. Replace PV accumulation with `matmul_tile` once the weighted-probability tile is materialized in a small local buffer.
 
 ## QK Tile Attention Pipeline — 2026-06-26
@@ -125,7 +125,7 @@ Current pipeline:
 1. Copy a small Q tile into row-major local buffer.
 2. Transpose K block into `[H, Kb]` local buffer.
 3. Call `matmul_tile` to compute raw QK score tile.
-4. Apply scale, causal mask, `BlockMask`, and `ScoreBiasFn` in FlashOne code.
+4. Apply scale, causal mask, `BlockMask`, and `ScoreBiasFn` in OneDNN-Flash code.
 5. Run per-query online softmax recurrence.
 6. Accumulate `weight * V` using scalar/reference loops.
 
@@ -162,7 +162,7 @@ Pipeline:
 5. Rescale historical accumulator by `exp(old_max - new_max)` and add the PV tile.
 6. Update running denominator and final normalize at the end of all K blocks.
 
-This gives the first end-to-end FlashOne CPU pipeline where both QK and PV can use oneDNN while online softmax remains explicit in FlashOne code.
+This gives the first end-to-end OneDNN-Flash CPU pipeline where both QK and PV can use oneDNN while online softmax remains explicit in OneDNN-Flash code.
 
 Current local benchmark (`M=N=128,H=D=64,causal,key_block=32,query_block=16`):
 
@@ -187,11 +187,11 @@ Next steps:
 3. Benchmark shape sweep: sequence length, head dim, value dim, block sizes.
 ## TensorFlow Custom Op linkage note
 
-The first TensorFlow integration is a CPU custom op, not XLA lowering yet. The shared library target is `flashone_tf_attention.so`; it reuses `flashone_core` and links against the local oneDNN package extracted under `third_party/onednn-local`. At runtime, `ldd build/flashone_tf_attention.so` resolves `libdnnl.so.3` to `third_party/onednn-local/usr/lib/x86_64-linux-gnu/libdnnl.so.3`.
+The first TensorFlow integration is a CPU custom op, not XLA lowering yet. The shared library target is `onednn_flash_tf_attention.so`; it reuses `onednn_flash_core` and links against the local oneDNN package extracted under `third_party/onednn-local`. At runtime, `ldd build/onednn_flash_tf_attention.so` resolves `libdnnl.so.3` to `third_party/onednn-local/usr/lib/x86_64-linux-gnu/libdnnl.so.3`.
 
 ## First real oneDNN BRGEMM ukernel path — 2026-06-27
 
-FlashOne now has an actual oneDNN experimental BRGEMM ukernel backend behind the same `TileKernel` seam:
+OneDNN-Flash now has an actual oneDNN experimental BRGEMM ukernel backend behind the same `TileKernel` seam:
 
 ```cpp
 enum class TileKernelKind {
@@ -204,7 +204,7 @@ enum class TileKernelKind {
 Build detection:
 
 - CMake checks `<oneapi/dnnl/dnnl_ukernel.hpp>` and `dnnl::ukernel::brgemm::get_B_pack_type(...)` with `DNNL_EXPERIMENTAL_UKERNEL`.
-- If the check succeeds, `src/flashone/onednn_brgemm_tile_kernel.cpp` is compiled and `FLASHONE_HAS_ONEDNN_BRGEMM=1` is exported.
+- If the check succeeds, `src/onednn_flash/onednn_brgemm_tile_kernel.cpp` is compiled and `FLASHONE_HAS_ONEDNN_BRGEMM=1` is exported.
 - The local working build used `third_party/onednn-debian-3.12/usr` because the older `third_party/onednn-local` package does not expose the ukernel C++ header.
 
 CMake command used for the verified BRGEMM build:
@@ -253,7 +253,7 @@ Interpretation:
 
 - The project no longer only uses `dnnl::matmul`; there is now a real `dnnl::ukernel::brgemm` path.
 - At this small reference shape, BRGEMM is about 1.5x faster than the current oneDNN matmul tile path.
-- This still does not prove the final FlashAttention design claim; online softmax remains in FlashOne C++ and BRGEMM is not yet doing packed-B, bf16/AMX, post-op softmax, or multi-tile batch-reduce PV accumulation.
+- This still does not prove the final FlashAttention design claim; online softmax remains in OneDNN-Flash C++ and BRGEMM is not yet doing packed-B, bf16/AMX, post-op softmax, or multi-tile batch-reduce PV accumulation.
 
 Next BRGEMM-specific steps:
 
@@ -278,7 +278,7 @@ void matmul_tile_onednn_brgemm_inplace(..., BrgemmScratchpad& scratchpad);
 
 `AttentionWorkspace` owns one `brgemm_scratchpad`, and the QK/PV workspace path passes it into `matmul_tile_inplace(...)` when `FLASHONE_HAS_ONEDNN_BRGEMM` is enabled. The older no-scratchpad overloads remain available and use `thread_local BrgemmScratchpad`, so tests and one-off calls still avoid repeated heap allocation after the first resize. `BrgemmScratchpad::data(...)` returns a 64-byte aligned pointer because oneDNN's ukernel implementation checks cache-line alignment for scratchpad.
 
-The same step also starts using BRGEMM's batch-reduce semantics in the generic contiguous `MatmulShape` path: when `K` is divisible by 16, FlashOne feeds the ukernel `batch_size=K/16` with `k=16` slices instead of issuing a single `batch_size=1` GEMM replacement. For the current attention microbenchmark this means QK with `D=64` uses four reduced products, and PV with `Kb=32` uses two reduced products.
+The same step also starts using BRGEMM's batch-reduce semantics in the generic contiguous `MatmulShape` path: when `K` is divisible by 16, OneDNN-Flash feeds the ukernel `batch_size=K/16` with `k=16` slices instead of issuing a single `batch_size=1` GEMM replacement. For the current attention microbenchmark this means QK with `D=64` uses four reduced products, and PV with `Kb=32` uses two reduced products.
 
 Validation after this change:
 
@@ -323,7 +323,7 @@ Interpretation:
 
 - The hot QK/PV BRGEMM path is now free of per-tile scratchpad allocation.
 - The scratchpad passed to oneDNN is cache-line aligned instead of relying on `std::vector<uint8_t>`'s default alignment.
-- The contiguous `MatmulShape` BRGEMM route now uses real batch-reduce across K slices for K values divisible by 16, so it is no longer merely a `batch_size=1` single-GEMM wrapper in the common FlashOne attention shapes.
+- The contiguous `MatmulShape` BRGEMM route now uses real batch-reduce across K slices for K values divisible by 16, so it is no longer merely a `batch_size=1` single-GEMM wrapper in the common OneDNN-Flash attention shapes.
 - The next high-value step is a row-major-K BRGEMM path, because copied-transposed K is now the bigger remaining design compromise.
 
 After delayed hw-context release, the measured BRGEMM tile path moved from `~0.0996ms` to `~0.0948ms` in the same local microbenchmark. Treat that as directional rather than final benchmarking, but it confirms the per-tile release was measurable overhead.
@@ -336,7 +336,7 @@ A new experimental QK layout is available:
 qk_tile_layout='brgemm_transformed_k'
 ```
 
-This path targets the remaining compromise in `tile_kernel='onednn_brgemm'`: the previous BRGEMM QK route required FlashOne to explicitly copy/transpose each K block into `[D,Kb]` before calling BRGEMM. Directly feeding the original row-major K block `[Kb,D]` as a strided transposed B view is not expressible with the current oneDNN BRGEMM ukernel API: it exposes leading dimensions and batch offsets for contiguous operands, but not an arbitrary per-element stride pattern for `B=[D,Kb]` over source `K=[Kb,D]`.
+This path targets the remaining compromise in `tile_kernel='onednn_brgemm'`: the previous BRGEMM QK route required OneDNN-Flash to explicitly copy/transpose each K block into `[D,Kb]` before calling BRGEMM. Directly feeding the original row-major K block `[Kb,D]` as a strided transposed B view is not expressible with the current oneDNN BRGEMM ukernel API: it exposes leading dimensions and batch offsets for contiguous operands, but not an arbitrary per-element stride pattern for `B=[D,Kb]` over source `K=[Kb,D]`.
 
 Implementation:
 
@@ -358,7 +358,7 @@ PYTHONPATH=$PWD/python:$PWD python3 -m pytest -q tests/python tests/tensorflow
 17 passed
 ```
 
-The TensorFlow test suite includes an isolated subprocess smoke for `tile_kernel='onednn_brgemm'` with both `qk_tile_layout='copied_transposed'` and `qk_tile_layout='brgemm_transformed_k'`, because TensorFlow cannot safely load two shared libraries registering the same `FlashOneAttention` op in one process.
+The TensorFlow test suite includes an isolated subprocess smoke for `tile_kernel='onednn_brgemm'` with both `qk_tile_layout='copied_transposed'` and `qk_tile_layout='brgemm_transformed_k'`, because TensorFlow cannot safely load two shared libraries registering the same `OneDNN-FlashAttention` op in one process.
 
 Latest local C++ benchmark (`M=N=128,K=D=64,causal=1,query_block=16,key_block=32`) after transformed-K support:
 

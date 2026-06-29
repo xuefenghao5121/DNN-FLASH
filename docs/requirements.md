@@ -1,8 +1,8 @@
-# FlashOne Requirements
+# OneDNN-Flash Requirements
 
 ## Mission
 
-FlashOne provides a CPU-side FlexAttention implementation with FlashAttention-style memory behavior and oneDNN-oriented kernel design.
+OneDNN-Flash provides a CPU-side FlexAttention implementation with FlashAttention-style memory behavior and oneDNN-oriented kernel design.
 
 ## MVP Scope — Month 1 Week 1
 
@@ -40,4 +40,4 @@ The first development slice intentionally avoids TensorFlow/XLA/oneDNN integrati
 - `PYTHONPATH=python python3 -m pytest -q tests/python` passes.
 - `cmake -S . -B build && cmake --build build -j` passes.
 - `ctest --test-dir build --output-on-failure` passes.
-- `./build/flashone_bench` runs and prints timing for standard and tiled implementations.
+- `./build/onednn_flash_bench` runs and prints timing for standard and tiled implementations.

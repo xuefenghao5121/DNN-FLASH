@@ -1,4 +1,4 @@
-# FlashOne Stage 1 QK Post-ops Validation Report
+# OneDNN-Flash Stage 1 QK Post-ops Validation Report
 
 > Date: 2026-06-29 (updated)
 > Scope: Stage 1.2 / Stage 1.3 minimal QK score tile validation + Stage 1.10 cache observability.
@@ -32,8 +32,8 @@ Stage 1.1 confirmed the following oneDNN `dnnl::matmul + post_ops` capability bo
 
 Stage 1.2/1.3 adds a minimal internal QK score tile path:
 
-- `src/flashone/qk_score_tile.cpp`
-- `src/flashone/qk_score_tile_internal.hpp`
+- `src/onednn_flash/qk_score_tile.cpp`
+- `src/onednn_flash/qk_score_tile_internal.hpp`
 - `tests/cpp/test_qk_score_tile.cpp`
 - `benchmarks/bench_qk_postops.cpp`
 
@@ -52,8 +52,8 @@ Supported fast-path score_mod semantics:
 Fallback behavior:
 
 - Unsupported/broadcast bias remains reference fallback with observable `FallbackReason`.
-- oneDNN exceptions fall back to reference QK plus FlashOne post-op application.
-- Causal/boundary mask remains outside this path and is still owned by FlashOne epilogue / mask tile generator design.
+- oneDNN exceptions fall back to reference QK plus OneDNN-Flash post-op application.
+- Causal/boundary mask remains outside this path and is still owned by OneDNN-Flash epilogue / mask tile generator design.
 
 ## Correctness Results
 

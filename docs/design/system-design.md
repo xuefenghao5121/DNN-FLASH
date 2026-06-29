@@ -1,25 +1,25 @@
-# FlashOne 系统级设计方案
+# OneDNN-Flash 系统级设计方案
 
 > 状态：Draft v0.1
 > 日期：2026-06-27
 > 作者：小西 / OpenClaw
-> 项目：FlashOne = Flash Attention on oneDNN
+> 项目：OneDNN-Flash = Flash Attention on oneDNN
 > 适用范围：后续实现必须先对齐本文档，再进入模块编码与性能优化。
 
 ---
 
 ## 0. 设计原则
 
-FlashOne 的核心原则不是“自己手写一个 attention kernel”，也不是“把若干 GEMM 调用替换成 oneDNN”。
+OneDNN-Flash 的核心原则不是“自己手写一个 attention kernel”，也不是“把若干 GEMM 调用替换成 oneDNN”。
 
-FlashOne 的核心原则是：
+OneDNN-Flash 的核心原则是：
 
-> 以 TensorFlow/XLA 保留图级语义，以 FlashOne 描述 FlexAttention 执行计划，以 oneDNN 充分发挥 JIT、BRGEMM、post-ops、primitive cache、AMX/SVE 后端能力，形成 CPU 端可融合、可调度、可扩展的 FlexAttention/FlexInteraction 系统。
+> 以 TensorFlow/XLA 保留图级语义，以 OneDNN-Flash 描述 FlexAttention 执行计划，以 oneDNN 充分发挥 JIT、BRGEMM、post-ops、primitive cache、AMX/SVE 后端能力，形成 CPU 端可融合、可调度、可扩展的 FlexAttention/FlexInteraction 系统。
 
 因此后续开发必须遵守以下约束：
 
 1. **系统方案先行**：任何 kernel 优化前，必须明确它属于哪一层、服务哪个设计假设、如何验证。
-2. **oneDNN-native 优先**：优先使用 oneDNN JIT/BRGEMM/post-ops/transform/cache；只有在 oneDNN 无法表达时，才用 FlashOne 自有代码补齐。
+2. **oneDNN-native 优先**：优先使用 oneDNN JIT/BRGEMM/post-ops/transform/cache；只有在 oneDNN 无法表达时，才用 OneDNN-Flash 自有代码补齐。
 3. **不 materialize N² 中间矩阵**：完整 score/probability 矩阵不得作为默认路径落内存。
 4. **score_mod/BlockMask 是一等公民**：不能只优化 dense causal attention，必须保留 FlexAttention 扩展点。
 5. **XLA/TF 集成是主线，不是附属 benchmark**：eager Custom Op 只是验证路径，最终目标是 graph/XLA 级融合。
@@ -31,7 +31,7 @@ FlashOne 的核心原则是：
 
 ### 1.1 项目定位
 
-FlashOne 是 CPU 端 FlexAttention 执行框架，目标是填补 GPU FlexAttention/FlashAttention 在 CPU 侧的空白。
+OneDNN-Flash 是 CPU 端 FlexAttention 执行框架，目标是填补 GPU FlexAttention/FlashAttention 在 CPU 侧的空白。
 
 Phase 1 聚焦 FlexAttention：
 
@@ -78,7 +78,7 @@ aggregate(transform(interact(A, B)), C)
 ```text
 ┌─────────────────────────────────────────────────────────────┐
 │ Python / TensorFlow API                                     │
-│ flashone_attention(q, k, v, score_mod, block_mask, options) │
+│ onednn_flash_attention(q, k, v, score_mod, block_mask, options) │
 └──────────────────────────────┬──────────────────────────────┘
                                │
 ┌──────────────────────────────▼──────────────────────────────┐
@@ -90,7 +90,7 @@ aggregate(transform(interact(A, B)), C)
 └──────────────────────────────┬──────────────────────────────┘
                                │
 ┌──────────────────────────────▼──────────────────────────────┐
-│ FlashOne Runtime Planner                                     │
+│ OneDNN-Flash Runtime Planner                                     │
 │ - shape/dtype/ISA dispatch                                   │
 │ - tile policy                                                │
 │ - backend selection                                          │
@@ -180,7 +180,7 @@ For each batch/head:
 Q/K tile
   -> oneDNN BRGEMM/matmul JIT
        post_ops: scale + additive_bias + simple score_mod + mask injection
-  -> FlashOne online softmax recurrence
+  -> OneDNN-Flash online softmax recurrence
   -> oneDNN BRGEMM/matmul PV accumulation
   -> output tile
 ```
@@ -188,9 +188,9 @@ Q/K tile
 重要说明：
 
 - `scale/additive_bias/部分 score_mod` 应优先进入 oneDNN post-ops。
-- `online softmax recurrence` 由于跨 K-block 维护 row max/sum，短期仍由 FlashOne execution engine 管理。
+- `online softmax recurrence` 由于跨 K-block 维护 row max/sum，短期仍由 OneDNN-Flash execution engine 管理。
 - `BlockMask tile skip` 在 scheduler 层做，不应等到 post-op 才 mask。
-- `boundary mask` 可作为 post-op/additive mask 或 FlashOne fallback 处理。
+- `boundary mask` 可作为 post-op/additive mask 或 OneDNN-Flash fallback 处理。
 
 ---
 
@@ -202,12 +202,12 @@ Q/K tile
 
 - 提供用户入口。
 - 选择 eager Custom Op / graph XLA 路径。
-- 将用户参数标准化成 FlashOne runtime options。
+- 将用户参数标准化成 OneDNN-Flash runtime options。
 
 #### 初始 API
 
 ```python
-def flashone_attention(
+def onednn_flash_attention(
     q,
     k,
     v,
@@ -403,7 +403,7 @@ RuntimePlan:
 
 #### 当前状态
 
-已有 `FlashOneAttention` CPU op，支持：
+已有 `OneDNN-FlashAttention` CPU op，支持：
 
 - `causal`
 - `query_block_size`
@@ -443,9 +443,9 @@ backend_policy
 ```text
 TensorFlow graph
   -> XLA HLO
-  -> pattern/lowering pass identifies FlashOne attention
-  -> emits CustomCall("flashone_attention")
-  -> FlashOne runtime planner
+  -> pattern/lowering pass identifies OneDNN-Flash attention
+  -> emits CustomCall("onednn_flash_attention")
+  -> OneDNN-Flash runtime planner
   -> oneDNN execution
 ```
 
@@ -453,14 +453,14 @@ TensorFlow graph
 
 1. 固定 shape/f32/causal。
 2. 无 score_mod 或只支持 scale。
-3. XLA HLO 中出现 FlashOne CustomCall。
+3. XLA HLO 中出现 OneDNN-Flash CustomCall。
 4. runtime 执行结果与 TF reference 一致。
 5. benchmark 对比 eager Custom Op 和原生 TF graph。
 
 #### 成功标准
 
 - attention 语义在 HLO 中没有被拆散为 materialized `N x N` score path。
-- CustomCall 能接入 FlashOne runtime planner。
+- CustomCall 能接入 OneDNN-Flash runtime planner。
 - 至少一个固定 shape 正确运行。
 
 ---
@@ -535,7 +535,7 @@ fallback_reason:
 - `OneDnnPostOpsBuilder` 设计与实现。
 - QK tile 支持 `scale + additive_bias` post-op。
 - correctness tests：对比 reference score path。
-- benchmark：post-op path vs FlashOne C++ 后处理。
+- benchmark：post-op path vs OneDNN-Flash C++ 后处理。
 - 文档：哪些 score_mod 可下沉，哪些不可。
 
 验收：
@@ -576,7 +576,7 @@ fallback_reason:
 
 ### Stage 4：XLA Custom Call 最小闭环
 
-目标：证明 FlashOne 不是 eager Custom Op，而是可 graph-level 集成。
+目标：证明 OneDNN-Flash 不是 eager Custom Op，而是可 graph-level 集成。
 
 交付：
 
@@ -676,7 +676,7 @@ TF_XLA_FLAGS=... python3 tests/xla/...
 
 ## 10. 设计结论
 
-FlashOne 的系统核心是：
+OneDNN-Flash 的系统核心是：
 
 ```text
 FlexAttention semantics

@@ -1,7 +1,7 @@
 # oneDNN Post-ops Capability Probe
 
 > Date: 2026-06-27
-> Scope: FlashOne Stage 1.1 capability probe only; not a performance benchmark.
+> Scope: OneDNN-Flash Stage 1.1 capability probe only; not a performance benchmark.
 
 ## Results
 

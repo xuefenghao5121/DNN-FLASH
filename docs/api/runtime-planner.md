@@ -8,7 +8,7 @@
 
 ## 1. 设计目标
 
-Runtime Planner 是 FlashOne 的执行决策中心。它负责把输入 shape、dtype、score_mod、block_mask、硬件能力和用户选项转换为稳定可复现的执行计划。
+Runtime Planner 是 OneDNN-Flash 的执行决策中心。它负责把输入 shape、dtype、score_mod、block_mask、硬件能力和用户选项转换为稳定可复现的执行计划。
 
 核心目标：
 
@@ -190,7 +190,7 @@ cache key 必须能解释性能差异，不能只按 shape 缓存。
 每个 plan 应能 dump：
 
 ```text
-FlashOne RuntimePlan:
+OneDNN-Flash RuntimePlan:
   shape: B=...,H=...,M=...,N=...,D=...,Dv=...
   dtype: ...
   q_block/k_block: ...

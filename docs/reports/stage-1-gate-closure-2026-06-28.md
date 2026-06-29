@@ -1,4 +1,4 @@
-# FlashOne Stage 1.4 Gate Closure and Diff Grouping
+# OneDNN-Flash Stage 1.4 Gate Closure and Diff Grouping
 
 > Date: 2026-06-28
 > Purpose: close the Stage 1 post-ops validation gate and prevent mixed commits from hiding design/implementation boundaries.
@@ -81,7 +81,7 @@ docs/modules/xla-custom-call.md
 Suggested message:
 
 ```text
-Document FlashOne system design and Stage 1 post-ops plan
+Document OneDNN-Flash system design and Stage 1 post-ops plan
 ```
 
 Gate:
@@ -99,19 +99,19 @@ Files:
 ```text
 .gitignore
 cmake/FindLocalDnnl.cmake
-include/flashone/onednn_brgemm_tile_kernel.hpp
-src/flashone/onednn_brgemm_tile_kernel.cpp
-include/flashone/attention.hpp
-include/flashone/attention_workspace.hpp
-include/flashone/tile_kernel.hpp
-src/flashone/attention.cpp
-src/flashone/tile_kernel.cpp
+include/onednn_flash/onednn_brgemm_tile_kernel.hpp
+src/onednn_flash/onednn_brgemm_tile_kernel.cpp
+include/onednn_flash/attention.hpp
+include/onednn_flash/attention_workspace.hpp
+include/onednn_flash/tile_kernel.hpp
+src/onednn_flash/attention.cpp
+src/onednn_flash/tile_kernel.cpp
 benchmarks/bench_attention.cpp
 docs/backend/onednn-brgemm-notes.md
 tests/cpp/test_tile_kernel.cpp
-python/flashone_tf/ops.py
-tensorflow_ops/flashone_attention_op.cc
-tests/tensorflow/test_flashone_tf_op.py
+python/onednn_flash_tf/ops.py
+tensorflow_ops/onednn_flash_attention_op.cc
+tests/tensorflow/test_onednn_flash_tf_op.py
 ```
 
 Important boundary:
@@ -147,10 +147,10 @@ Files:
 
 ```text
 CMakeLists.txt
-include/flashone/runtime_plan.hpp
-include/flashone/score_mod_plan.hpp
-src/flashone/runtime_plan.cpp
-src/flashone/score_mod_plan.cpp
+include/onednn_flash/runtime_plan.hpp
+include/onednn_flash/score_mod_plan.hpp
+src/onednn_flash/runtime_plan.cpp
+src/onednn_flash/score_mod_plan.cpp
 tests/cpp/test_runtime_plan.cpp
 ```
 
@@ -164,7 +164,7 @@ Gate:
 
 ```bash
 cmake --build build-brgemm-main -j2
-./build-brgemm-main/flashone_runtime_plan_tests
+./build-brgemm-main/onednn_flash_runtime_plan_tests
 ctest --test-dir build-brgemm-main --output-on-failure
 ```
 
@@ -191,7 +191,7 @@ Gate:
 
 ```bash
 cmake --build build-brgemm-main -j2
-./build-brgemm-main/flashone_onednn_postops_capability
+./build-brgemm-main/onednn_flash_onednn_postops_capability
 ctest --test-dir build-brgemm-main --output-on-failure
 ```
 
@@ -203,8 +203,8 @@ Files:
 
 ```text
 CMakeLists.txt
-src/flashone/qk_score_tile.cpp
-src/flashone/qk_score_tile_internal.hpp
+src/onednn_flash/qk_score_tile.cpp
+src/onednn_flash/qk_score_tile_internal.hpp
 tests/cpp/test_qk_score_tile.cpp
 benchmarks/bench_qk_postops.cpp
 benchmarks/results/stage-1-postops/cpp-qk-postops.json
@@ -222,8 +222,8 @@ Gate:
 
 ```bash
 cmake --build build-brgemm-main -j2
-./build-brgemm-main/flashone_qk_score_tile_tests
-./build-brgemm-main/flashone_qk_postops_bench --warmup 2 --repeat 5 \
+./build-brgemm-main/onednn_flash_qk_score_tile_tests
+./build-brgemm-main/onednn_flash_qk_postops_bench --warmup 2 --repeat 5 \
   --output-json benchmarks/results/stage-1-postops/cpp-qk-postops.json \
   --output-csv benchmarks/results/stage-1-postops/cpp-qk-postops.csv
 ctest --test-dir build-brgemm-main --output-on-failure

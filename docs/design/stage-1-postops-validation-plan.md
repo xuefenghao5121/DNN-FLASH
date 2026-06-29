@@ -8,7 +8,7 @@
 
 ## 0. 阶段目标
 
-Stage 1 的目标不是追逐局部 BRGEMM 性能，而是验证 FlashOne 系统主线中的关键链路：
+Stage 1 的目标不是追逐局部 BRGEMM 性能，而是验证 OneDNN-Flash 系统主线中的关键链路：
 
 ```text
 用户 score_mod 语义
@@ -116,7 +116,7 @@ JSON-like capability table
 - 只替换 QK score tile 生成或 score epilogue 前半段。
 - 不修改 online softmax recurrence。
 - 不修改 PV accumulation。
-- 若 oneDNN 不支持，走 FlashOne epilogue fallback。
+- 若 oneDNN 不支持，走 OneDNN-Flash epilogue fallback。
 
 验收：
 
@@ -134,7 +134,7 @@ JSON-like capability table
 
 - 初期只支持 same-shape bias tile。
 - broadcast bias 可 probe，但不作为必须实现。
-- causal boundary mask 不强行下沉；仍由 FlashOne epilogue 处理。
+- causal boundary mask 不强行下沉；仍由 OneDNN-Flash epilogue 处理。
 
 验收：
 
@@ -170,12 +170,12 @@ next-stage recommendation
 允许改动：
 
 ```text
-include/flashone/*plan*.hpp
-src/flashone/*plan*.cpp
-include/flashone/score_mod*.hpp
-src/flashone/score_mod*.cpp
-include/flashone/onednn_*postops*.hpp
-src/flashone/onednn_*postops*.cpp
+include/onednn_flash/*plan*.hpp
+src/onednn_flash/*plan*.cpp
+include/onednn_flash/score_mod*.hpp
+src/onednn_flash/score_mod*.cpp
+include/onednn_flash/onednn_*postops*.hpp
+src/onednn_flash/onednn_*postops*.cpp
 tests/cpp/*plan*test*.cpp
 tests/cpp/*onednn*postops*.cpp
 benchmarks/*
@@ -186,10 +186,10 @@ docs/reports/*stage-1*.md
 谨慎改动：
 
 ```text
-tensorflow_ops/flashone_attention_op.cc
-python/flashone_tf/ops.py
-src/flashone/attention.cpp
-src/flashone/batched_attention.cpp
+tensorflow_ops/onednn_flash_attention_op.cc
+python/onednn_flash_tf/ops.py
+src/onednn_flash/attention.cpp
+src/onednn_flash/batched_attention.cpp
 ```
 
 原则：只接入 RuntimePlan/debug，不做 ABI 大改。
