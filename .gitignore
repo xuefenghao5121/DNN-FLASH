@@ -16,5 +16,7 @@ third_party/*/
 !third_party/README.md
 benchmarks/results/
 docs/
-tests/
+# tests/ - Stage 1 minimal test only
+tests/python/
+tests/tensorflow/
 .claude/
