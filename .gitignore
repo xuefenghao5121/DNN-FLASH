@@ -11,7 +11,5 @@ data/*
 !data/.gitkeep
 experiments/outputs/
 .cache/
-third_party/debs/
-third_party/oneDNN-src/
-third_party/onednn-debian-3.12/
-third_party/onednn-local/usr/share/doc/
+third_party/
+benchmarks/results/
