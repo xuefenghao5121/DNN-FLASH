@@ -1,6 +1,6 @@
-#include "flashone/onednn_brgemm_tile_kernel.hpp"
+#include "onednn_flash/onednn_brgemm_tile_kernel.hpp"
 
-#ifdef FLASHONE_HAS_ONEDNN_BRGEMM
+#ifdef ONEDNN_FLASH_HAS_ONEDNN_BRGEMM
 
 #include <oneapi/dnnl/dnnl.hpp>
 #include <oneapi/dnnl/dnnl_ukernel.hpp>
@@ -14,7 +14,7 @@
 #include <utility>
 #include <vector>
 
-namespace flashone {
+namespace onednn_flash {
 namespace {
 
 constexpr std::uintptr_t kScratchpadAlignment = 64;
@@ -142,7 +142,7 @@ CachedBrgemmKernel make_kernel(const BrgemmShape& shape) {
         throw std::runtime_error("oneDNN BRGEMM ukernel does not support f32/f32 on this platform");
     }
     if (pack != pack_type::no_trans) {
-        // Keep the first integration honest: FlashOne currently feeds row-major
+        // Keep the first integration honest: OneDNNFlash currently feeds row-major
         // B tiles. If the ukernel requires packed B, add transform support before
         // enabling this path for production.
         throw std::runtime_error("oneDNN BRGEMM ukernel requires packed B; transform path is not implemented yet");
@@ -394,6 +394,6 @@ void matmul_tile_onednn_brgemm_transposed_b_inplace(const float* a,
     }
 }
 
-}  // namespace flashone
+}  // namespace onednn_flash
 
-#endif  // FLASHONE_HAS_ONEDNN_BRGEMM
+#endif  // ONEDNN_FLASH_HAS_ONEDNN_BRGEMM

@@ -1,4 +1,4 @@
-#include "flashone/qk_score_tile_internal.hpp"
+#include "onednn_flash/qk_score_tile_internal.hpp"
 
 #include <cmath>
 #include <iostream>
@@ -38,8 +38,8 @@ void require_close(const std::vector<float>& a,
     }
 }
 
-flashone::RuntimePlanInput base_input() {
-    flashone::RuntimePlanInput input;
+onednn_flash::RuntimePlanInput base_input() {
+    onednn_flash::RuntimePlanInput input;
     input.query_length = 4;
     input.key_length = 5;
     input.head_dim = 3;
@@ -77,7 +77,7 @@ std::vector<float> reference_scores(const std::vector<float>& q,
     return out;
 }
 
-void run_qk_score_tile_case(flashone::ScoreModKind kind,
+void run_qk_score_tile_case(onednn_flash::ScoreModKind kind,
                             bool has_scale,
                             float scale,
                             bool has_bias) {
@@ -93,19 +93,19 @@ void run_qk_score_tile_case(flashone::ScoreModKind kind,
     input.requested_score_mod = kind;
     input.has_scale = has_scale;
     input.scale_value = scale;
-    input.requested_bias_kind = has_bias ? flashone::BiasKind::SameShapeTile : flashone::BiasKind::None;
-    const auto plan = flashone::make_runtime_plan(input,
+    input.requested_bias_kind = has_bias ? onednn_flash::BiasKind::SameShapeTile : onednn_flash::BiasKind::None;
+    const auto plan = onednn_flash::make_runtime_plan(input,
                                                   /*one_dnn_available=*/true,
                                                   /*one_dnn_post_ops_available=*/true);
 
-    flashone::QkScoreTilePostOpsInput post_ops;
+    onednn_flash::QkScoreTilePostOpsInput post_ops;
     if (has_bias) {
         post_ops.additive_bias = bias.data();
         post_ops.additive_bias_stride_m = n;
         post_ops.additive_bias_stride_n = 1;
     }
 
-    const flashone::StridedMatmulShape shape{/*m=*/m,
+    const onednn_flash::StridedMatmulShape shape{/*m=*/m,
                                              /*n=*/n,
                                              /*k=*/d,
                                              /*a_stride_m=*/d,
@@ -114,28 +114,28 @@ void run_qk_score_tile_case(flashone::ScoreModKind kind,
                                              /*b_stride_n=*/d,
                                              /*c_stride_m=*/n,
                                              /*c_stride_n=*/1};
-    flashone::QkScoreTileDebugInfo debug;
-    flashone::qk_score_tile_inplace(q.data(), k.data(), actual.data(), shape, plan, post_ops, &debug);
+    onednn_flash::QkScoreTileDebugInfo debug;
+    onednn_flash::qk_score_tile_inplace(q.data(), k.data(), actual.data(), shape, plan, post_ops, &debug);
 
     const auto expected = reference_scores(q, k, has_bias ? bias.data() : nullptr, n, 1, scale, has_scale, m, n, d);
     require_close(expected, actual, 1e-5f, "QK score tile post-op mismatch");
-#ifdef FLASHONE_HAS_ONEDNN
-    require(debug.backend == flashone::QkBackendKind::OneDnnMatmul, "expected oneDNN matmul backend");
-    require(debug.lowering_status == flashone::LoweringStatus::LoweredToOneDnnPostOps,
+#ifdef ONEDNN_FLASH_HAS_ONEDNN
+    require(debug.backend == onednn_flash::QkBackendKind::OneDnnMatmul, "expected oneDNN matmul backend");
+    require(debug.lowering_status == onednn_flash::LoweringStatus::LoweredToOneDnnPostOps,
             "expected oneDNN post-op lowering");
-    require(debug.fallback_reason == flashone::FallbackReason::None, "unexpected fallback reason");
+    require(debug.fallback_reason == onednn_flash::FallbackReason::None, "unexpected fallback reason");
 #endif
 }
 
 void test_scale_post_op() {
-    run_qk_score_tile_case(flashone::ScoreModKind::Scale,
+    run_qk_score_tile_case(onednn_flash::ScoreModKind::Scale,
                            /*has_scale=*/true,
                            /*scale=*/0.25f,
                            /*has_bias=*/false);
 }
 
 void test_scale_additive_bias_post_op() {
-    run_qk_score_tile_case(flashone::ScoreModKind::ScaleAdditiveBias,
+    run_qk_score_tile_case(onednn_flash::ScoreModKind::ScaleAdditiveBias,
                            /*has_scale=*/true,
                            /*scale=*/0.5f,
                            /*has_bias=*/true);
@@ -153,15 +153,15 @@ void test_deferred_wait_mode_preserves_one_dnn_results() {
     std::vector<float> expected(tile_count * m * n, 0.0f);
 
     auto input = base_input();
-    input.requested_score_mod = flashone::ScoreModKind::ScaleAdditiveBias;
+    input.requested_score_mod = onednn_flash::ScoreModKind::ScaleAdditiveBias;
     input.has_scale = true;
     input.scale_value = 0.5f;
-    input.requested_bias_kind = flashone::BiasKind::SameShapeTile;
-    const auto plan = flashone::make_runtime_plan(input,
+    input.requested_bias_kind = onednn_flash::BiasKind::SameShapeTile;
+    const auto plan = onednn_flash::make_runtime_plan(input,
                                                   /*one_dnn_available=*/true,
                                                   /*one_dnn_post_ops_available=*/true);
 
-    const flashone::StridedMatmulShape shape{/*m=*/m,
+    const onednn_flash::StridedMatmulShape shape{/*m=*/m,
                                              /*n=*/n,
                                              /*k=*/d,
                                              /*a_stride_m=*/d,
@@ -170,19 +170,19 @@ void test_deferred_wait_mode_preserves_one_dnn_results() {
                                              /*b_stride_n=*/d,
                                              /*c_stride_m=*/n,
                                              /*c_stride_n=*/1};
-    flashone::QkScoreTileExecuteOptions execute_options;
-    execute_options.sync_mode = flashone::QkScoreTileSyncMode::DeferUntilExplicitWait;
+    onednn_flash::QkScoreTileExecuteOptions execute_options;
+    execute_options.sync_mode = onednn_flash::QkScoreTileSyncMode::DeferUntilExplicitWait;
 
-    flashone::QkScoreTileDebugInfo debug;
+    onednn_flash::QkScoreTileDebugInfo debug;
     for (std::size_t tile = 0; tile < tile_count; ++tile) {
         const auto q_offset = tile * m * d;
         const auto k_offset = tile * n * d;
         const auto score_offset = tile * m * n;
-        flashone::QkScoreTilePostOpsInput post_ops;
+        onednn_flash::QkScoreTilePostOpsInput post_ops;
         post_ops.additive_bias = bias.data() + score_offset;
         post_ops.additive_bias_stride_m = n;
         post_ops.additive_bias_stride_n = 1;
-        flashone::qk_score_tile_inplace_with_options(q.data() + q_offset,
+        onednn_flash::qk_score_tile_inplace_with_options(q.data() + q_offset,
                                                      k.data() + k_offset,
                                                      actual.data() + score_offset,
                                                      shape,
@@ -204,14 +204,14 @@ void test_deferred_wait_mode_preserves_one_dnn_results() {
                                                     d);
         std::copy(expected_tile.begin(), expected_tile.end(), expected.begin() + static_cast<std::ptrdiff_t>(score_offset));
     }
-    flashone::qk_score_tile_wait_for_onednn();
+    onednn_flash::qk_score_tile_wait_for_onednn();
 
     require_close(expected, actual, 1e-5f, "deferred wait QK score tile mismatch");
-#ifdef FLASHONE_HAS_ONEDNN
-    require(debug.backend == flashone::QkBackendKind::OneDnnMatmul, "expected deferred oneDNN backend");
-    require(debug.lowering_status == flashone::LoweringStatus::LoweredToOneDnnPostOps,
+#ifdef ONEDNN_FLASH_HAS_ONEDNN
+    require(debug.backend == onednn_flash::QkBackendKind::OneDnnMatmul, "expected deferred oneDNN backend");
+    require(debug.lowering_status == onednn_flash::LoweringStatus::LoweredToOneDnnPostOps,
             "expected deferred oneDNN post-op lowering");
-    require(debug.fallback_reason == flashone::FallbackReason::None,
+    require(debug.fallback_reason == onednn_flash::FallbackReason::None,
             "unexpected deferred oneDNN fallback reason");
 #endif
 }
@@ -225,14 +225,14 @@ void test_cache_observability_counters() {
     std::vector<float> actual(m * n, 0.0f);
 
     auto input = base_input();
-    input.requested_score_mod = flashone::ScoreModKind::Scale;
+    input.requested_score_mod = onednn_flash::ScoreModKind::Scale;
     input.has_scale = true;
     input.scale_value = 0.75f;  // unique scale to avoid cache hits from prior tests
-    const auto plan = flashone::make_runtime_plan(input,
+    const auto plan = onednn_flash::make_runtime_plan(input,
                                                   /*one_dnn_available=*/true,
                                                   /*one_dnn_post_ops_available=*/true);
 
-    const flashone::StridedMatmulShape shape{/*m=*/m,
+    const onednn_flash::StridedMatmulShape shape{/*m=*/m,
                                              /*n=*/n,
                                              /*k=*/d,
                                              /*a_stride_m=*/d,
@@ -241,14 +241,14 @@ void test_cache_observability_counters() {
                                              /*b_stride_n=*/d,
                                              /*c_stride_m=*/n,
                                              /*c_stride_n=*/1};
-    flashone::QkScoreTilePostOpsInput post_ops;
-    flashone::QkScoreTileDebugInfo debug;
+    onednn_flash::QkScoreTilePostOpsInput post_ops;
+    onednn_flash::QkScoreTileDebugInfo debug;
 
-    flashone::qk_score_tile_reset_cache_stats();
-    flashone::qk_score_tile_inplace(q.data(), k.data(), actual.data(), shape, plan, post_ops, &debug);
-    auto stats_after_first = flashone::qk_score_tile_get_cache_stats();
+    onednn_flash::qk_score_tile_reset_cache_stats();
+    onednn_flash::qk_score_tile_inplace(q.data(), k.data(), actual.data(), shape, plan, post_ops, &debug);
+    auto stats_after_first = onednn_flash::qk_score_tile_get_cache_stats();
 
-#ifdef FLASHONE_HAS_ONEDNN
+#ifdef ONEDNN_FLASH_HAS_ONEDNN
     require(stats_after_first.primitive_cache_misses == 1, "first call should be cache miss");
     require(stats_after_first.primitive_cache_hits == 0, "first call should have no hits");
     require(stats_after_first.memory_handle_rebinds == 1, "first call should rebind once");
@@ -260,18 +260,18 @@ void test_cache_observability_counters() {
     require(stats_after_first.cache_size == 0, "no oneDNN: empty cache");
 #endif
 
-    flashone::qk_score_tile_inplace(q.data(), k.data(), actual.data(), shape, plan, post_ops, &debug);
-    auto stats_after_second = flashone::qk_score_tile_get_cache_stats();
+    onednn_flash::qk_score_tile_inplace(q.data(), k.data(), actual.data(), shape, plan, post_ops, &debug);
+    auto stats_after_second = onednn_flash::qk_score_tile_get_cache_stats();
 
-#ifdef FLASHONE_HAS_ONEDNN
+#ifdef ONEDNN_FLASH_HAS_ONEDNN
     require(stats_after_second.primitive_cache_misses == 1, "second call should still be 1 miss");
     require(stats_after_second.primitive_cache_hits == 1, "second call should be 1 hit");
     require(stats_after_second.memory_handle_rebinds == 2, "second call should rebind again");
     require(stats_after_second.immediate_waits == 2, "second call should wait again");
 #endif
 
-    flashone::qk_score_tile_reset_cache_stats();
-    auto stats_after_reset = flashone::qk_score_tile_get_cache_stats();
+    onednn_flash::qk_score_tile_reset_cache_stats();
+    auto stats_after_reset = onednn_flash::qk_score_tile_get_cache_stats();
     require(stats_after_reset.primitive_cache_hits == 0, "reset should zero hits");
     require(stats_after_reset.primitive_cache_misses == 0, "reset should zero misses");
     require(stats_after_reset.memory_handle_rebinds == 0, "reset should zero rebinds");
@@ -290,15 +290,15 @@ void test_reference_fallback_for_broadcast_bias() {
     std::vector<float> actual(m * n, 0.0f);
 
     auto input = base_input();
-    input.requested_score_mod = flashone::ScoreModKind::AdditiveBias;
-    input.requested_bias_kind = flashone::BiasKind::BroadcastRow;
-    const auto plan = flashone::make_runtime_plan(input,
+    input.requested_score_mod = onednn_flash::ScoreModKind::AdditiveBias;
+    input.requested_bias_kind = onednn_flash::BiasKind::BroadcastRow;
+    const auto plan = onednn_flash::make_runtime_plan(input,
                                                   /*one_dnn_available=*/true,
                                                   /*one_dnn_post_ops_available=*/true);
-    require(plan.fallback_reason == flashone::FallbackReason::UnsupportedBroadcast,
+    require(plan.fallback_reason == onednn_flash::FallbackReason::UnsupportedBroadcast,
             "broadcast bias should stay fallback in Stage 1.2");
 
-    const flashone::StridedMatmulShape shape{/*m=*/m,
+    const onednn_flash::StridedMatmulShape shape{/*m=*/m,
                                              /*n=*/n,
                                              /*k=*/d,
                                              /*a_stride_m=*/d,
@@ -307,17 +307,17 @@ void test_reference_fallback_for_broadcast_bias() {
                                              /*b_stride_n=*/d,
                                              /*c_stride_m=*/n,
                                              /*c_stride_n=*/1};
-    flashone::QkScoreTilePostOpsInput post_ops;
+    onednn_flash::QkScoreTilePostOpsInput post_ops;
     post_ops.additive_bias = row_bias.data();
     post_ops.additive_bias_stride_m = 1;
     post_ops.additive_bias_stride_n = 0;
 
-    flashone::QkScoreTileDebugInfo debug;
-    flashone::qk_score_tile_inplace(q.data(), k.data(), actual.data(), shape, plan, post_ops, &debug);
+    onednn_flash::QkScoreTileDebugInfo debug;
+    onednn_flash::qk_score_tile_inplace(q.data(), k.data(), actual.data(), shape, plan, post_ops, &debug);
     const auto expected = reference_scores(q, k, row_bias.data(), 1, 0, 1.0f, false, m, n, d);
     require_close(expected, actual, 1e-6f, "broadcast fallback should preserve score semantics");
-    require(debug.backend == flashone::QkBackendKind::Reference, "expected reference backend");
-    require(debug.fallback_reason == flashone::FallbackReason::UnsupportedBroadcast,
+    require(debug.backend == onednn_flash::QkBackendKind::Reference, "expected reference backend");
+    require(debug.fallback_reason == onednn_flash::FallbackReason::UnsupportedBroadcast,
             "expected UnsupportedBroadcast debug reason");
 }
 
@@ -329,6 +329,6 @@ int main() {
     test_deferred_wait_mode_preserves_one_dnn_results();
     test_cache_observability_counters();
     test_reference_fallback_for_broadcast_bias();
-    std::cout << "flashone QK score tile tests passed\n";
+    std::cout << "onednn_flash QK score tile tests passed\n";
     return 0;
 }

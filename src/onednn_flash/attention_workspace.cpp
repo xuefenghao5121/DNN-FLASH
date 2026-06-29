@@ -1,6 +1,6 @@
-#include "flashone/attention_workspace.hpp"
+#include "onednn_flash/attention_workspace.hpp"
 
-namespace flashone {
+namespace onednn_flash {
 
 void AttentionWorkspace::resize(std::size_t q_block_size, std::size_t k_block_size,
                                  std::size_t head_dim, std::size_t value_dim) {
@@ -19,4 +19,4 @@ void AttentionWorkspace::resize(std::size_t q_block_size, std::size_t k_block_si
     row_has_valid.resize(q_block_size);
 }
 
-}  // namespace flashone
+}  // namespace onednn_flash

@@ -4,7 +4,7 @@ import math
 
 import numpy as np
 
-from flashone import flash_attention_reference, standard_attention_reference
+from onednn_flash import flash_attention_reference, standard_attention_reference
 
 
 def test_block_mask_and_score_bias_match_standard() -> None:

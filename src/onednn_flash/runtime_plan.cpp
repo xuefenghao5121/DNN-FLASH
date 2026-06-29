@@ -1,9 +1,9 @@
-#include "flashone/runtime_plan.hpp"
+#include "onednn_flash/runtime_plan.hpp"
 
 #include <limits>
 #include <sstream>
 
-namespace flashone {
+namespace onednn_flash {
 
 const char* to_string(BlockMaskKind value) {
     switch (value) {
@@ -162,8 +162,8 @@ RuntimePlan make_runtime_plan(const RuntimePlanInput& input,
     }
 
     plan.requires_mask_tile_generator = plan.block_mask_plan.requires_mask_tile_generator;
-    plan.requires_flashone_epilogue = plan.requires_mask_tile_generator ||
-                                      plan.score_mod_plan.lowering_status == LoweringStatus::FlashOneEpilogue;
+    plan.requires_onednn_flash_epilogue = plan.requires_mask_tile_generator ||
+                                      plan.score_mod_plan.lowering_status == LoweringStatus::OneDNNFlashEpilogue;
 
     std::ostringstream sig;
     sig << shape_signature(input) << '|' << dtype_signature(input) << '|'
@@ -197,4 +197,4 @@ RuntimePlanCacheKey make_runtime_plan_cache_key(const RuntimePlan& plan) {
     return key;
 }
 
-}  // namespace flashone
+}  // namespace onednn_flash

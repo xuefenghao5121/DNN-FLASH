@@ -7,11 +7,11 @@ import tensorflow as tf
 
 
 def _default_op_path() -> Path:
-    return Path(__file__).resolve().parents[2] / "build" / "flashone_tf_attention.so"
+    return Path(__file__).resolve().parents[2] / "build" / "onednn_flash_tf_attention.so"
 
 
 def select_tile_sizes(query_tokens: int, key_tokens: int | None = None) -> tuple[int, int]:
-    """Select default FlashOne tile sizes for the current TensorFlow custom-op path.
+    """Select default OneDNNFlash tile sizes for the current TensorFlow custom-op path.
 
     The heuristic is intentionally small and conservative. It comes from the
     2026-06-26 CPU eager sweep at B=1,H=4,D=32,E=128,causal=true:
@@ -48,19 +48,19 @@ def select_qk_tile_layout(query_tokens: int, key_tokens: int | None = None) -> s
 
 
 @lru_cache(maxsize=None)
-def _load_flashone_op_cached(op_path: str):
+def _load_onednn_flash_op_cached(op_path: str):
     path = Path(op_path)
     if not path.exists():
-        raise FileNotFoundError(f"FlashOne TensorFlow op not found: {path}")
+        raise FileNotFoundError(f"OneDNNFlash TensorFlow op not found: {path}")
     return tf.load_op_library(str(path))
 
 
-def load_flashone_op(path: str | Path | None = None):
+def load_onednn_flash_op(path: str | Path | None = None):
     op_path = Path(path) if path is not None else _default_op_path()
-    return _load_flashone_op_cached(str(op_path.resolve()))
+    return _load_onednn_flash_op_cached(str(op_path.resolve()))
 
 
-def flashone_attention(
+def onednn_flash_attention(
     q,
     k,
     v,
@@ -102,7 +102,7 @@ def flashone_attention(
     if tile_kernel == "onednn_brgemm" and qk_tile_layout == "strided_k":
         raise ValueError("tile_kernel='onednn_brgemm' does not support qk_tile_layout='strided_k'; use 'copied_transposed' or 'brgemm_transformed_k'")
 
-    ops = load_flashone_op(op_path)
+    ops = load_onednn_flash_op(op_path)
     return ops.flash_one_attention(
         q,
         k,

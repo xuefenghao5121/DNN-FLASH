@@ -1,7 +1,7 @@
-#include "flashone/tile_kernel.hpp"
+#include "onednn_flash/tile_kernel.hpp"
 
-#ifdef FLASHONE_HAS_ONEDNN_BRGEMM
-#include "flashone/onednn_brgemm_tile_kernel.hpp"
+#ifdef ONEDNN_FLASH_HAS_ONEDNN_BRGEMM
+#include "onednn_flash/onednn_brgemm_tile_kernel.hpp"
 #endif
 
 #include <cmath>
@@ -38,47 +38,47 @@ void require_close(const std::vector<float>& a,
 }
 
 void test_reference_dispatch() {
-    const flashone::MatmulShape shape{5, 7, 3};
+    const onednn_flash::MatmulShape shape{5, 7, 3};
     const auto a = make_values(shape.m * shape.k, 0.2f);
     const auto b = make_values(shape.k * shape.n, 1.2f);
-    const auto direct = flashone::matmul_tile_reference(a, b, shape);
-    const auto dispatched = flashone::matmul_tile(flashone::TileKernelKind::Reference, a, b, shape);
+    const auto direct = onednn_flash::matmul_tile_reference(a, b, shape);
+    const auto dispatched = onednn_flash::matmul_tile(onednn_flash::TileKernelKind::Reference, a, b, shape);
     require_close(direct, dispatched, 1e-6f, "reference dispatch mismatch");
 }
 
-#ifdef FLASHONE_HAS_ONEDNN
+#ifdef ONEDNN_FLASH_HAS_ONEDNN
 void test_onednn_matches_reference() {
-    const flashone::MatmulShape shape{8, 9, 6};
+    const onednn_flash::MatmulShape shape{8, 9, 6};
     const auto a = make_values(shape.m * shape.k, 0.4f);
     const auto b = make_values(shape.k * shape.n, 1.4f);
-    const auto expected = flashone::matmul_tile_reference(a, b, shape);
-    const auto actual = flashone::matmul_tile(flashone::TileKernelKind::OneDnn, a, b, shape);
+    const auto expected = onednn_flash::matmul_tile_reference(a, b, shape);
+    const auto actual = onednn_flash::matmul_tile(onednn_flash::TileKernelKind::OneDnn, a, b, shape);
     require_close(expected, actual, 1e-5f, "oneDNN tile kernel mismatch");
 }
 #endif
 
-#ifdef FLASHONE_HAS_ONEDNN_BRGEMM
+#ifdef ONEDNN_FLASH_HAS_ONEDNN_BRGEMM
 void test_onednn_brgemm_matches_reference() {
-    const flashone::MatmulShape shape{16, 16, 16};
+    const onednn_flash::MatmulShape shape{16, 16, 16};
     const auto a = make_values(shape.m * shape.k, 0.7f);
     const auto b = make_values(shape.k * shape.n, 1.7f);
-    const auto expected = flashone::matmul_tile_reference(a, b, shape);
-    const auto actual = flashone::matmul_tile(flashone::TileKernelKind::OneDnnBrgemm, a, b, shape);
+    const auto expected = onednn_flash::matmul_tile_reference(a, b, shape);
+    const auto actual = onednn_flash::matmul_tile(onednn_flash::TileKernelKind::OneDnnBrgemm, a, b, shape);
     require_close(expected, actual, 1e-4f, "oneDNN BRGEMM tile kernel mismatch");
 }
 
 void test_onednn_brgemm_k_split_matmul_matches_reference() {
-    const flashone::MatmulShape shape{13, 11, 32};
+    const onednn_flash::MatmulShape shape{13, 11, 32};
     const auto a = make_values(shape.m * shape.k, 0.8f);
     const auto b = make_values(shape.k * shape.n, 1.8f);
-    const auto expected = flashone::matmul_tile_reference(a, b, shape);
-    const auto actual = flashone::matmul_tile(flashone::TileKernelKind::OneDnnBrgemm, a, b, shape);
+    const auto expected = onednn_flash::matmul_tile_reference(a, b, shape);
+    const auto actual = onednn_flash::matmul_tile(onednn_flash::TileKernelKind::OneDnnBrgemm, a, b, shape);
     require_close(expected, actual, 1e-4f, "oneDNN BRGEMM K-split matmul mismatch");
 }
 
 void test_onednn_brgemm_batch_reduce() {
     const std::size_t batch = 3;
-    const flashone::BrgemmShape shape{/*m=*/8,
+    const onednn_flash::BrgemmShape shape{/*m=*/8,
                                       /*n=*/8,
                                       /*k=*/4,
                                       batch,
@@ -92,7 +92,7 @@ void test_onednn_brgemm_batch_reduce() {
     std::vector<float> actual(shape.m * shape.n, 0.0f);
     std::vector<float> expected(shape.m * shape.n, 0.0f);
 
-    flashone::matmul_tile_onednn_brgemm_inplace(a.data(), b.data(), actual.data(), shape);
+    onednn_flash::matmul_tile_onednn_brgemm_inplace(a.data(), b.data(), actual.data(), shape);
 
     for (std::size_t bb = 0; bb < batch; ++bb) {
         for (std::size_t i = 0; i < shape.m; ++i) {
@@ -109,7 +109,7 @@ void test_onednn_brgemm_batch_reduce() {
 }
 
 void test_onednn_brgemm_scratchpad_alignment() {
-    flashone::BrgemmScratchpad scratchpad;
+    onednn_flash::BrgemmScratchpad scratchpad;
     void* ptr = scratchpad.data(137);
     const auto address = reinterpret_cast<std::uintptr_t>(ptr);
     if (ptr == nullptr || address % 64 != 0) {
@@ -118,7 +118,7 @@ void test_onednn_brgemm_scratchpad_alignment() {
 }
 
 void test_onednn_brgemm_transposed_b_matches_reference() {
-    const flashone::MatmulShape shape{16, 16, 16};
+    const onednn_flash::MatmulShape shape{16, 16, 16};
     const auto a = make_values(shape.m * shape.k, 1.1f);
     const auto b = make_values(shape.k * shape.n, 2.1f);
     std::vector<float> b_transposed(shape.n * shape.k);
@@ -127,11 +127,11 @@ void test_onednn_brgemm_transposed_b_matches_reference() {
             b_transposed[n * shape.k + k] = b[k * shape.n + n];
         }
     }
-    const auto expected = flashone::matmul_tile_reference(a, b, shape);
+    const auto expected = onednn_flash::matmul_tile_reference(a, b, shape);
     std::vector<float> actual(shape.m * shape.n, 0.0f);
-    flashone::BrgemmScratchpad scratchpad;
-    flashone::BrgemmTransformWorkspace transform_workspace;
-    flashone::matmul_tile_onednn_brgemm_transposed_b_inplace(a.data(),
+    onednn_flash::BrgemmScratchpad scratchpad;
+    onednn_flash::BrgemmTransformWorkspace transform_workspace;
+    onednn_flash::matmul_tile_onednn_brgemm_transposed_b_inplace(a.data(),
                                                              b_transposed.data(),
                                                              actual.data(),
                                                              shape,
@@ -142,7 +142,7 @@ void test_onednn_brgemm_transposed_b_matches_reference() {
 }
 
 void test_onednn_brgemm_transform_alignment() {
-    flashone::BrgemmTransformWorkspace workspace;
+    onednn_flash::BrgemmTransformWorkspace workspace;
     void* ptr = workspace.data(257);
     const auto address = reinterpret_cast<std::uintptr_t>(ptr);
     if (ptr == nullptr || address % 64 != 0) {
@@ -155,10 +155,10 @@ void test_onednn_brgemm_transform_alignment() {
 
 int main() {
     test_reference_dispatch();
-#ifdef FLASHONE_HAS_ONEDNN
+#ifdef ONEDNN_FLASH_HAS_ONEDNN
     test_onednn_matches_reference();
 #endif
-#ifdef FLASHONE_HAS_ONEDNN_BRGEMM
+#ifdef ONEDNN_FLASH_HAS_ONEDNN_BRGEMM
     test_onednn_brgemm_matches_reference();
     test_onednn_brgemm_k_split_matmul_matches_reference();
     test_onednn_brgemm_batch_reduce();
@@ -166,6 +166,6 @@ int main() {
     test_onednn_brgemm_transposed_b_matches_reference();
     test_onednn_brgemm_transform_alignment();
 #endif
-    std::cout << "flashone tile kernel tests passed\n";
+    std::cout << "onednn_flash tile kernel tests passed\n";
     return 0;
 }

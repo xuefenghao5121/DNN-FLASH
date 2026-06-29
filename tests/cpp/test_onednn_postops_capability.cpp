@@ -1,6 +1,6 @@
 #include <oneapi/dnnl/dnnl.hpp>
 
-#ifdef FLASHONE_HAS_ONEDNN_BRGEMM
+#ifdef ONEDNN_FLASH_HAS_ONEDNN_BRGEMM
 #include <oneapi/dnnl/dnnl_ukernel.hpp>
 #endif
 
@@ -298,7 +298,7 @@ ProbeRow probe_eltwise_linear() {
 ProbeRow probe_ukernel_brgemm_boundary() {
     ProbeRow row;
     row.name = "ukernel_brgemm.post_ops_boundary";
-#ifdef FLASHONE_HAS_ONEDNN_BRGEMM
+#ifdef ONEDNN_FLASH_HAS_ONEDNN_BRGEMM
     row.compile_status = "passed";
     row.run_status = "not_tested";
     row.supported = false;
@@ -309,7 +309,7 @@ ProbeRow probe_ukernel_brgemm_boundary() {
     row.run_status = "not_tested";
     row.supported = false;
     row.method = "unsupported";
-    row.reason = "FLASHONE_HAS_ONEDNN_BRGEMM is not enabled";
+    row.reason = "ONEDNN_FLASH_HAS_ONEDNN_BRGEMM is not enabled";
 #endif
     return row;
 }
@@ -317,7 +317,7 @@ ProbeRow probe_ukernel_brgemm_boundary() {
 ProbeRow probe_ukernel_transform_out_ld() {
     ProbeRow row;
     row.name = "ukernel_transform.supported_out_ld";
-#ifdef FLASHONE_HAS_ONEDNN_BRGEMM
+#ifdef ONEDNN_FLASH_HAS_ONEDNN_BRGEMM
     row.compile_status = "passed";
     row.run_status = "passed";
     row.supported = true;
@@ -328,7 +328,7 @@ ProbeRow probe_ukernel_transform_out_ld() {
     row.run_status = "not_tested";
     row.supported = false;
     row.method = "unsupported";
-    row.reason = "FLASHONE_HAS_ONEDNN_BRGEMM is not enabled";
+    row.reason = "ONEDNN_FLASH_HAS_ONEDNN_BRGEMM is not enabled";
 #endif
     return row;
 }
@@ -336,7 +336,7 @@ ProbeRow probe_ukernel_transform_out_ld() {
 std::string json_report(const std::vector<ProbeRow>& rows) {
     std::ostringstream oss;
     oss << "{\n";
-    oss << "  \"schema\": \"flashone.onednn_postops_capability.v1\",\n";
+    oss << "  \"schema\": \"onednn_flash.onednn_postops_capability.v1\",\n";
     oss << "  \"primitive\": \"matmul\",\n";
     oss << "  \"dtype\": \"f32\",\n";
     oss << "  \"rows\": [\n";
@@ -360,7 +360,7 @@ std::string markdown_report(const std::vector<ProbeRow>& rows) {
     std::ostringstream oss;
     oss << "# oneDNN Post-ops Capability Probe\n\n";
     oss << "> Date: 2026-06-27\n";
-    oss << "> Scope: FlashOne Stage 1.1 capability probe only; not a performance benchmark.\n\n";
+    oss << "> Scope: OneDNNFlash Stage 1.1 capability probe only; not a performance benchmark.\n\n";
     oss << "## Results\n\n";
     oss << "| Name | Supported | Method | Compile | Run | Reason |\n";
     oss << "|---|---:|---|---|---|---|\n";

@@ -5,10 +5,10 @@
 #include <functional>
 #include <vector>
 
-#include "flashone/tile_kernel.hpp"
-#include "flashone/attention_workspace.hpp"
+#include "onednn_flash/tile_kernel.hpp"
+#include "onednn_flash/attention_workspace.hpp"
 
-namespace flashone {
+namespace onednn_flash {
 
 struct AttentionShape {
     std::size_t query_tokens;
@@ -84,4 +84,4 @@ void flash_attention_qk_pv_tile_ws(const float* q,
                                     const AttentionOptions& options,
                                     AttentionWorkspace& ws);
 
-}  // namespace flashone
+}  // namespace onednn_flash

@@ -1,8 +1,8 @@
-#include "flashone/attention.hpp"
+#include "onednn_flash/attention.hpp"
 
-#include "flashone/tile_kernel.hpp"
-#ifdef FLASHONE_HAS_ONEDNN_BRGEMM
-#include "flashone/onednn_brgemm_tile_kernel.hpp"
+#include "onednn_flash/tile_kernel.hpp"
+#ifdef ONEDNN_FLASH_HAS_ONEDNN_BRGEMM
+#include "onednn_flash/onednn_brgemm_tile_kernel.hpp"
 #endif
 
 #include <algorithm>
@@ -12,7 +12,7 @@
 #include <limits>
 #include <stdexcept>
 
-namespace flashone {
+namespace onednn_flash {
 namespace {
 
 void validate_inputs(const std::vector<float>& q,
@@ -552,13 +552,13 @@ void flash_attention_qk_pv_tile_ws(const float* q,
                                     ws.k_tile_t.data(),
                                     ws.score_tile.data(),
                                     {q_rows, k_cols, shape.head_dim}
-#ifdef FLASHONE_HAS_ONEDNN_BRGEMM
+#ifdef ONEDNN_FLASH_HAS_ONEDNN_BRGEMM
                                         ,
                                     ws.brgemm_context
 #endif
                 );
             } else if (options.qk_tile_layout == QkTileLayout::BrgemmTransformedK) {
-#ifndef FLASHONE_HAS_ONEDNN_BRGEMM
+#ifndef ONEDNN_FLASH_HAS_ONEDNN_BRGEMM
                 throw std::runtime_error("BRGEMM transformed-K QK layout requires oneDNN BRGEMM support");
 #else
                 if (options.qk_tile_kernel != TileKernelKind::OneDnnBrgemm) {
@@ -652,7 +652,7 @@ void flash_attention_qk_pv_tile_ws(const float* q,
                                 v_tile_ptr,
                                 ws.pv_tile.data(),
                                 {q_rows, shape.value_dim, k_cols}
-#ifdef FLASHONE_HAS_ONEDNN_BRGEMM
+#ifdef ONEDNN_FLASH_HAS_ONEDNN_BRGEMM
                                     ,
                                 ws.brgemm_context
 #endif
@@ -686,7 +686,7 @@ void flash_attention_qk_pv_tile_ws(const float* q,
             }
         }
     }
-#ifdef FLASHONE_HAS_ONEDNN_BRGEMM
+#ifdef ONEDNN_FLASH_HAS_ONEDNN_BRGEMM
     if (ws.brgemm_context.hw_context_active) {
         release_onednn_brgemm_hw_context();
         ws.brgemm_context.hw_context_active = false;
@@ -705,4 +705,4 @@ float max_abs_diff(const std::vector<float>& a, const std::vector<float>& b) {
     return diff;
 }
 
-}  // namespace flashone
+}  // namespace onednn_flash

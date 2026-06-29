@@ -1,18 +1,18 @@
 #!/usr/bin/env python3
-"""TensorFlow E2E benchmark for the FlashOne custom op MVP.
+"""TensorFlow E2E benchmark for the OneDNNFlash custom op MVP.
 
 This intentionally benchmarks the current CPU custom-op path, not XLA lowering.
 It compares:
   1. TensorFlow materialized scaled-dot-product attention
-  2. FlashOne custom op attention
+  2. OneDNNFlash custom op attention
   3. A tiny decoder block using each attention implementation
 
 The script can also persist machine-readable benchmark records and sweep tile sizes:
 
-  PYTHONPATH=python:. python3 benchmarks/tensorflow/bench_flashone_tf_e2e.py \
+  PYTHONPATH=python:. python3 benchmarks/tensorflow/bench_onednn_flash_tf_e2e.py \
     --seq 128 --output-json build/benchmarks/seq128.json
 
-  PYTHONPATH=python:. python3 benchmarks/tensorflow/bench_flashone_tf_e2e.py \
+  PYTHONPATH=python:. python3 benchmarks/tensorflow/bench_onednn_flash_tf_e2e.py \
     --seq 128 --sweep --query-blocks 8,16,32 --key-blocks 16,32,64 \
     --output-json build/benchmarks/sweep_seq128.json
 """
@@ -34,7 +34,7 @@ from typing import Any
 import numpy as np
 import tensorflow as tf
 
-from flashone_tf import flashone_attention, select_qk_tile_layout, select_tile_sizes
+from onednn_flash_tf import onednn_flash_attention, select_qk_tile_layout, select_tile_sizes
 
 
 @dataclass(frozen=True)
@@ -71,22 +71,22 @@ class BenchRecord:
     attention_max_abs_diff: float
     decoder_max_abs_diff: float
     tensorflow_attention_ms: float
-    flashone_attention_ms: float
+    onednn_flash_attention_ms: float
     tensorflow_decoder_block_ms: float
-    flashone_decoder_block_ms: float
+    onednn_flash_decoder_block_ms: float
 
     @property
-    def flashone_attention_speedup_vs_tf(self) -> float:
-        return self.tensorflow_attention_ms / self.flashone_attention_ms
+    def onednn_flash_attention_speedup_vs_tf(self) -> float:
+        return self.tensorflow_attention_ms / self.onednn_flash_attention_ms
 
     @property
-    def flashone_decoder_speedup_vs_tf(self) -> float:
-        return self.tensorflow_decoder_block_ms / self.flashone_decoder_block_ms
+    def onednn_flash_decoder_speedup_vs_tf(self) -> float:
+        return self.tensorflow_decoder_block_ms / self.onednn_flash_decoder_block_ms
 
     def to_json_dict(self) -> dict[str, Any]:
         data = asdict(self)
-        data["flashone_attention_speedup_vs_tf"] = self.flashone_attention_speedup_vs_tf
-        data["flashone_decoder_speedup_vs_tf"] = self.flashone_decoder_speedup_vs_tf
+        data["onednn_flash_attention_speedup_vs_tf"] = self.onednn_flash_attention_speedup_vs_tf
+        data["onednn_flash_decoder_speedup_vs_tf"] = self.onednn_flash_decoder_speedup_vs_tf
         return data
 
 
@@ -107,8 +107,8 @@ def tf_attention(q: tf.Tensor, k: tf.Tensor, v: tf.Tensor, *, causal: bool) -> t
     return tf.matmul(probs, v)
 
 
-def flashone_attention_tf(q: tf.Tensor, k: tf.Tensor, v: tf.Tensor, cfg: BenchConfig) -> tf.Tensor:
-    return flashone_attention(
+def onednn_flash_attention_tf(q: tf.Tensor, k: tf.Tensor, v: tf.Tensor, cfg: BenchConfig) -> tf.Tensor:
+    return onednn_flash_attention(
         q,
         k,
         v,
@@ -211,7 +211,7 @@ def parse_int_list(value: str) -> list[int]:
 def write_json(path: Path, records: Sequence[BenchRecord]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     payload: dict[str, Any] = {
-        "schema": "flashone.tf_e2e_benchmark.v1",
+        "schema": "onednn_flash.tf_e2e_benchmark.v1",
         "generated_at_unix": time.time(),
         "records": [record.to_json_dict() for record in records],
     }
@@ -240,7 +240,7 @@ def flatten_record(record: BenchRecord) -> dict[str, Any]:
 
 def run_one(cfg: BenchConfig, *, graph: bool) -> BenchRecord:
     mode = "graph" if graph else "eager"
-    print("FlashOne TensorFlow E2E benchmark")
+    print("OneDNNFlash TensorFlow E2E benchmark")
     print(f"mode: {mode}")
     print(
         f"shape: B={cfg.batch} H={cfg.heads} M=N={cfg.seq} D={cfg.head_dim} "
@@ -256,7 +256,7 @@ def run_one(cfg: BenchConfig, *, graph: bool) -> BenchRecord:
     weights = make_decoder_weights(cfg)
 
     tf_attn_out = tf_attention(q, k, v, causal=cfg.causal)
-    flash_attn_out = flashone_attention_tf(q, k, v, cfg)
+    flash_attn_out = onednn_flash_attention_tf(q, k, v, cfg)
     attn_max_abs_diff = float(tf.reduce_max(tf.abs(tf_attn_out - flash_attn_out)).numpy())
     print(f"attention_max_abs_diff: {attn_max_abs_diff:.9g}")
 
@@ -270,38 +270,38 @@ def run_one(cfg: BenchConfig, *, graph: bool) -> BenchRecord:
         x,
         weights,
         cfg,
-        lambda q_, k_, v_: flashone_attention_tf(q_, k_, v_, cfg),
+        lambda q_, k_, v_: onednn_flash_attention_tf(q_, k_, v_, cfg),
     )
     decoder_max_abs_diff = float(tf.reduce_max(tf.abs(tf_decoder_out - flash_decoder_out)).numpy())
     print(f"decoder_max_abs_diff: {decoder_max_abs_diff:.9g}")
 
     tf_attention_fn = lambda: tf_attention(q, k, v, causal=cfg.causal)
-    flashone_attention_fn = lambda: flashone_attention_tf(q, k, v, cfg)
+    onednn_flash_attention_fn = lambda: onednn_flash_attention_tf(q, k, v, cfg)
     tf_decoder_fn = lambda: decoder_block(
         x,
         weights,
         cfg,
         lambda q_, k_, v_: tf_attention(q_, k_, v_, causal=cfg.causal),
     )
-    flashone_decoder_fn = lambda: decoder_block(
+    onednn_flash_decoder_fn = lambda: decoder_block(
         x,
         weights,
         cfg,
-        lambda q_, k_, v_: flashone_attention_tf(q_, k_, v_, cfg),
+        lambda q_, k_, v_: onednn_flash_attention_tf(q_, k_, v_, cfg),
     )
     if graph:
         tf_attention_fn = tf.function(tf_attention_fn, jit_compile=False, autograph=False)
-        flashone_attention_fn = tf.function(flashone_attention_fn, jit_compile=False, autograph=False)
+        onednn_flash_attention_fn = tf.function(onednn_flash_attention_fn, jit_compile=False, autograph=False)
         tf_decoder_fn = tf.function(tf_decoder_fn, jit_compile=False, autograph=False)
-        flashone_decoder_fn = tf.function(flashone_decoder_fn, jit_compile=False, autograph=False)
+        onednn_flash_decoder_fn = tf.function(onednn_flash_decoder_fn, jit_compile=False, autograph=False)
 
     tf_attention_ms, _ = benchmark("tensorflow_attention", tf_attention_fn, warmup=cfg.warmup, repeat=cfg.repeat)
-    flashone_attention_ms, _ = benchmark(
-        "flashone_attention", flashone_attention_fn, warmup=cfg.warmup, repeat=cfg.repeat
+    onednn_flash_attention_ms, _ = benchmark(
+        "onednn_flash_attention", onednn_flash_attention_fn, warmup=cfg.warmup, repeat=cfg.repeat
     )
     tf_decoder_ms, _ = benchmark("tensorflow_decoder_block", tf_decoder_fn, warmup=cfg.warmup, repeat=cfg.repeat)
-    flashone_decoder_ms, _ = benchmark(
-        "flashone_decoder_block", flashone_decoder_fn, warmup=cfg.warmup, repeat=cfg.repeat
+    onednn_flash_decoder_ms, _ = benchmark(
+        "onednn_flash_decoder_block", onednn_flash_decoder_fn, warmup=cfg.warmup, repeat=cfg.repeat
     )
 
     return BenchRecord(
@@ -314,9 +314,9 @@ def run_one(cfg: BenchConfig, *, graph: bool) -> BenchRecord:
         attention_max_abs_diff=attn_max_abs_diff,
         decoder_max_abs_diff=decoder_max_abs_diff,
         tensorflow_attention_ms=tf_attention_ms,
-        flashone_attention_ms=flashone_attention_ms,
+        onednn_flash_attention_ms=onednn_flash_attention_ms,
         tensorflow_decoder_block_ms=tf_decoder_ms,
-        flashone_decoder_block_ms=flashone_decoder_ms,
+        onednn_flash_decoder_block_ms=onednn_flash_decoder_ms,
     )
 
 
@@ -327,13 +327,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--seq", type=int, default=128)
     parser.add_argument("--head-dim", type=int, default=32)
     parser.add_argument("--ffn-multiplier", type=int, default=4)
-    parser.add_argument("--query-block", type=int, default=None, help="Query tile size; default uses FlashOne heuristic")
-    parser.add_argument("--key-block", type=int, default=None, help="Key tile size; default uses FlashOne heuristic")
+    parser.add_argument("--query-block", type=int, default=None, help="Query tile size; default uses OneDNNFlash heuristic")
+    parser.add_argument("--key-block", type=int, default=None, help="Key tile size; default uses OneDNNFlash heuristic")
     parser.add_argument(
         "--qk-tile-layout",
         choices=["auto", "strided_k", "copied_transposed"],
         default="auto",
-        help="QK tile layout; auto uses FlashOne layout heuristic",
+        help="QK tile layout; auto uses OneDNNFlash layout heuristic",
     )
     parser.add_argument(
         "--qk-layouts",
@@ -415,13 +415,13 @@ def main() -> None:
         write_csv(args.output_csv, records)
 
     if len(records) > 1:
-        best = min(records, key=lambda record: record.flashone_attention_ms)
+        best = min(records, key=lambda record: record.onednn_flash_attention_ms)
         print(
-            "best_flashone_attention: "
+            "best_onednn_flash_attention: "
             f"q_block={best.config['query_block']} k_block={best.config['key_block']} "
             f"qk_layout={best.config['qk_tile_layout']} "
-            f"flashone_attention_ms={best.flashone_attention_ms:.6f} "
-            f"speedup_vs_tf={best.flashone_attention_speedup_vs_tf:.4f}"
+            f"onednn_flash_attention_ms={best.onednn_flash_attention_ms:.6f} "
+            f"speedup_vs_tf={best.onednn_flash_attention_speedup_vs_tf:.4f}"
         )
 
 

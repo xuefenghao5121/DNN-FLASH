@@ -2,9 +2,9 @@
 
 #include <cstddef>
 
-#include "flashone/attention.hpp"
+#include "onednn_flash/attention.hpp"
 
-namespace flashone {
+namespace onednn_flash {
 
 struct BatchedAttentionShape {
     std::size_t batch;
@@ -30,4 +30,4 @@ void flash_attention_batched_qk_pv_tile(const float* q,
                                         const BatchedAttentionShape& shape,
                                         const AttentionOptions& options);
 
-}  // namespace flashone
+}  // namespace onednn_flash

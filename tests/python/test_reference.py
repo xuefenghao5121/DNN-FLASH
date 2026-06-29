@@ -5,7 +5,7 @@ import math
 import numpy as np
 import pytest
 
-from flashone import flash_attention_reference, standard_attention_reference
+from onednn_flash import flash_attention_reference, standard_attention_reference
 
 
 def make_inputs(m: int, n: int, kdim: int, vdim: int) -> tuple[np.ndarray, np.ndarray, np.ndarray]:

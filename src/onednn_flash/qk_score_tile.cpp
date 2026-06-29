@@ -1,6 +1,6 @@
-#include "flashone/qk_score_tile_internal.hpp"
+#include "onednn_flash/qk_score_tile_internal.hpp"
 
-#ifdef FLASHONE_HAS_ONEDNN
+#ifdef ONEDNN_FLASH_HAS_ONEDNN
 #include <oneapi/dnnl/dnnl.hpp>
 #endif
 
@@ -10,7 +10,7 @@
 #include <tuple>
 #include <unordered_map>
 
-namespace flashone {
+namespace onednn_flash {
 namespace {
 
 void validate_qk_score_tile_args(const float* q,
@@ -83,7 +83,7 @@ void set_debug(QkScoreTileDebugInfo* debug,
     debug->message = message;
 }
 
-#ifndef FLASHONE_HAS_ONEDNN
+#ifndef ONEDNN_FLASH_HAS_ONEDNN
 void qk_score_tile_onednn_post_ops_inplace(const float*,
                                            const float*,
                                            float*,
@@ -91,7 +91,7 @@ void qk_score_tile_onednn_post_ops_inplace(const float*,
                                            const RuntimePlan&,
                                            const QkScoreTilePostOpsInput&,
                                            const QkScoreTileExecuteOptions&) {
-    throw std::runtime_error("FlashOne was built without oneDNN support");
+    throw std::runtime_error("OneDNNFlash was built without oneDNN support");
 }
 #else
 
@@ -315,7 +315,7 @@ void qk_score_tile_onednn_post_ops_inplace(const float* q,
 }  // namespace
 
 void qk_score_tile_wait_for_onednn() {
-#ifdef FLASHONE_HAS_ONEDNN
+#ifdef ONEDNN_FLASH_HAS_ONEDNN
     auto& context = thread_local_qk_context();
     if (context.has_pending_work) {
         context.stream.wait();
@@ -327,7 +327,7 @@ void qk_score_tile_wait_for_onednn() {
 
 QkScoreTileCacheStats qk_score_tile_get_cache_stats() {
     QkScoreTileCacheStats stats;
-#ifdef FLASHONE_HAS_ONEDNN
+#ifdef ONEDNN_FLASH_HAS_ONEDNN
     auto& context = thread_local_qk_context();
     stats.primitive_cache_hits = context.cache_hits;
     stats.primitive_cache_misses = context.cache_misses;
@@ -340,7 +340,7 @@ QkScoreTileCacheStats qk_score_tile_get_cache_stats() {
 }
 
 void qk_score_tile_reset_cache_stats() {
-#ifdef FLASHONE_HAS_ONEDNN
+#ifdef ONEDNN_FLASH_HAS_ONEDNN
     auto& context = thread_local_qk_context();
     context.cache_hits = 0;
     context.cache_misses = 0;
@@ -417,4 +417,4 @@ void qk_score_tile_inplace(const float* q,
                                        debug);
 }
 
-}  // namespace flashone
+}  // namespace onednn_flash

@@ -1,12 +1,12 @@
-#include "flashone/tile_kernel.hpp"
+#include "onednn_flash/tile_kernel.hpp"
 
-#ifdef FLASHONE_HAS_ONEDNN_BRGEMM
-#include "flashone/onednn_brgemm_tile_kernel.hpp"
+#ifdef ONEDNN_FLASH_HAS_ONEDNN_BRGEMM
+#include "onednn_flash/onednn_brgemm_tile_kernel.hpp"
 #endif
 
 #include <stdexcept>
 
-namespace flashone {
+namespace onednn_flash {
 
 std::vector<float> matmul_tile_onednn(const std::vector<float>& a,
                                       const std::vector<float>& b,
@@ -85,26 +85,26 @@ void matmul_tile_reference_strided_inplace(const float* a, const float* b, float
     }
 }
 
-#ifndef FLASHONE_HAS_ONEDNN
+#ifndef ONEDNN_FLASH_HAS_ONEDNN
 std::vector<float> matmul_tile_onednn(const std::vector<float>&,
                                       const std::vector<float>&,
                                       const MatmulShape&) {
-    throw std::runtime_error("FlashOne was built without oneDNN support");
+    throw std::runtime_error("OneDNNFlash was built without oneDNN support");
 }
 void matmul_tile_onednn_inplace(const float*, const float*, float*,
                                  const MatmulShape&) {
-    throw std::runtime_error("FlashOne was built without oneDNN support");
+    throw std::runtime_error("OneDNNFlash was built without oneDNN support");
 }
 void matmul_tile_onednn_strided_inplace(const float*, const float*, float*,
                                         const StridedMatmulShape&) {
-    throw std::runtime_error("FlashOne was built without oneDNN support");
+    throw std::runtime_error("OneDNNFlash was built without oneDNN support");
 }
 #endif
 
-#ifndef FLASHONE_HAS_ONEDNN_BRGEMM
+#ifndef ONEDNN_FLASH_HAS_ONEDNN_BRGEMM
 void matmul_tile_onednn_brgemm_inplace(const float*, const float*, float*,
                                        const MatmulShape&) {
-    throw std::runtime_error("FlashOne was built without oneDNN BRGEMM ukernel support");
+    throw std::runtime_error("OneDNNFlash was built without oneDNN BRGEMM ukernel support");
 }
 #endif
 
@@ -142,7 +142,7 @@ void matmul_tile_inplace(TileKernelKind kind, const float* a, const float* b, fl
     throw std::invalid_argument("Unknown tile kernel kind");
 }
 
-#ifdef FLASHONE_HAS_ONEDNN_BRGEMM
+#ifdef ONEDNN_FLASH_HAS_ONEDNN_BRGEMM
 void matmul_tile_inplace(TileKernelKind kind,
                          const float* a,
                          const float* b,
@@ -184,4 +184,4 @@ void matmul_tile_strided_inplace(TileKernelKind kind,
     throw std::invalid_argument("Unknown tile kernel kind");
 }
 
-}  // namespace flashone
+}  // namespace onednn_flash

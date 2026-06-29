@@ -1,8 +1,8 @@
 #pragma once
 
-#include "flashone/attention.hpp"
+#include "onednn_flash/attention.hpp"
 
-namespace flashone {
+namespace onednn_flash {
 
 enum class AttentionBackendKind {
     StandardReference,
@@ -18,4 +18,4 @@ std::vector<float> run_attention(AttentionBackendKind kind,
                                  const AttentionShape& shape,
                                  const AttentionOptions& options);
 
-}  // namespace flashone
+}  // namespace onednn_flash

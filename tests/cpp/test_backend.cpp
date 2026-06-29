@@ -1,4 +1,4 @@
-#include "flashone/backend.hpp"
+#include "onednn_flash/backend.hpp"
 
 #include <cmath>
 #include <iostream>
@@ -22,27 +22,27 @@ void require(bool condition, const char* message) {
 }
 
 void test_backend_dispatch() {
-    const flashone::AttentionShape shape{5, 6, 4, 3};
+    const onednn_flash::AttentionShape shape{5, 6, 4, 3};
     const auto q = make_values(shape.query_tokens * shape.head_dim, 0.1f);
     const auto k = make_values(shape.key_tokens * shape.head_dim, 1.1f);
     const auto v = make_values(shape.key_tokens * shape.value_dim, 2.1f);
-    const flashone::AttentionOptions options{1.0f / std::sqrt(static_cast<float>(shape.head_dim)),
+    const onednn_flash::AttentionOptions options{1.0f / std::sqrt(static_cast<float>(shape.head_dim)),
                                              true,
                                              2};
-    const auto standard = flashone::run_attention(
-        flashone::AttentionBackendKind::StandardReference, q, k, v, shape, options);
-    const auto tiled = flashone::run_attention(
-        flashone::AttentionBackendKind::FlashTiledReference, q, k, v, shape, options);
-    require(flashone::max_abs_diff(standard, tiled) < 1e-5f, "backend dispatch mismatch");
+    const auto standard = onednn_flash::run_attention(
+        onednn_flash::AttentionBackendKind::StandardReference, q, k, v, shape, options);
+    const auto tiled = onednn_flash::run_attention(
+        onednn_flash::AttentionBackendKind::FlashTiledReference, q, k, v, shape, options);
+    require(onednn_flash::max_abs_diff(standard, tiled) < 1e-5f, "backend dispatch mismatch");
 }
 
 void test_block_mask_and_bias() {
-    const flashone::AttentionShape shape{4, 4, 3, 2};
+    const onednn_flash::AttentionShape shape{4, 4, 3, 2};
     const auto q = make_values(shape.query_tokens * shape.head_dim, 0.2f);
     const auto k = make_values(shape.key_tokens * shape.head_dim, 1.2f);
     const auto v = make_values(shape.key_tokens * shape.value_dim, 2.2f);
 
-    const flashone::BlockMask mask{
+    const onednn_flash::BlockMask mask{
         2,
         2,
         2,
@@ -53,7 +53,7 @@ void test_block_mask_and_bias() {
         },
     };
 
-    flashone::AttentionOptions options;
+    onednn_flash::AttentionOptions options;
     options.scale = 1.0f / std::sqrt(static_cast<float>(shape.head_dim));
     options.causal = false;
     options.key_block_size = 2;
@@ -62,9 +62,9 @@ void test_block_mask_and_bias() {
         return static_cast<float>(qi) * 0.01f - static_cast<float>(kj) * 0.02f;
     };
 
-    const auto standard = flashone::standard_attention(q, k, v, shape, options);
-    const auto tiled = flashone::flash_attention_tiled(q, k, v, shape, options);
-    require(flashone::max_abs_diff(standard, tiled) < 1e-5f, "block mask + bias mismatch");
+    const auto standard = onednn_flash::standard_attention(q, k, v, shape, options);
+    const auto tiled = onednn_flash::flash_attention_tiled(q, k, v, shape, options);
+    require(onednn_flash::max_abs_diff(standard, tiled) < 1e-5f, "block mask + bias mismatch");
 }
 
 }  // namespace
@@ -72,6 +72,6 @@ void test_block_mask_and_bias() {
 int main() {
     test_backend_dispatch();
     test_block_mask_and_bias();
-    std::cout << "flashone backend tests passed\n";
+    std::cout << "onednn_flash backend tests passed\n";
     return 0;
 }

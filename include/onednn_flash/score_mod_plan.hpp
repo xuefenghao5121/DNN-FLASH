@@ -2,7 +2,7 @@
 
 #include <string>
 
-namespace flashone {
+namespace onednn_flash {
 
 enum class DataType {
     F32,
@@ -30,7 +30,7 @@ enum class BiasKind {
 enum class LoweringStatus {
     LoweredToOneDnnPostOps,
     PartiallyLowered,
-    FlashOneEpilogue,
+    OneDNNFlashEpilogue,
     ReferenceFallback,
     Unsupported,
 };
@@ -80,4 +80,4 @@ ScoreModPlan make_score_mod_plan(ScoreModKind requested_kind,
                                  BiasKind requested_bias_kind,
                                  bool one_dnn_post_ops_available);
 
-}  // namespace flashone
+}  // namespace onednn_flash

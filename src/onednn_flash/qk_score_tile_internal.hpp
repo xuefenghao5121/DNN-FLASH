@@ -1,9 +1,9 @@
 #pragma once
 
-#include "flashone/runtime_plan.hpp"
-#include "flashone/tile_kernel.hpp"
+#include "onednn_flash/runtime_plan.hpp"
+#include "onednn_flash/tile_kernel.hpp"
 
-namespace flashone {
+namespace onednn_flash {
 
 struct QkScoreTilePostOpsInput {
     const float* additive_bias{nullptr};
@@ -60,4 +60,4 @@ void qk_score_tile_inplace(const float* q,
                            const QkScoreTilePostOpsInput& post_ops,
                            QkScoreTileDebugInfo* debug = nullptr);
 
-}  // namespace flashone
+}  // namespace onednn_flash

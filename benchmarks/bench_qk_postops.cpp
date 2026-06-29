@@ -1,6 +1,6 @@
-#include "flashone/qk_score_tile_internal.hpp"
+#include "onednn_flash/qk_score_tile_internal.hpp"
 
-#ifdef FLASHONE_HAS_ONEDNN
+#ifdef ONEDNN_FLASH_HAS_ONEDNN
 #include <oneapi/dnnl/dnnl.h>
 #endif
 
@@ -30,7 +30,7 @@ struct ShapeCase {
 
 struct ScoreCase {
     const char* name;
-    flashone::ScoreModKind kind;
+    onednn_flash::ScoreModKind kind;
     bool has_scale;
     float scale;
     bool has_bias;
@@ -140,15 +140,15 @@ TimingStats summarize_samples(const std::vector<double>& samples) {
 }
 
 std::string git_commit_string() {
-#ifdef FLASHONE_GIT_COMMIT
-    return FLASHONE_GIT_COMMIT;
+#ifdef ONEDNN_FLASH_GIT_COMMIT
+    return ONEDNN_FLASH_GIT_COMMIT;
 #else
     return "unknown";
 #endif
 }
 
 std::string one_dnn_version_string() {
-#ifdef FLASHONE_HAS_ONEDNN
+#ifdef ONEDNN_FLASH_HAS_ONEDNN
     const auto* version = dnnl_version();
     if (version == nullptr) {
         return "unknown";
@@ -161,8 +161,8 @@ std::string one_dnn_version_string() {
 #endif
 }
 
-flashone::StridedMatmulShape make_strided_shape(const ShapeCase& shape) {
-    return flashone::StridedMatmulShape{/*m=*/shape.m,
+onednn_flash::StridedMatmulShape make_strided_shape(const ShapeCase& shape) {
+    return onednn_flash::StridedMatmulShape{/*m=*/shape.m,
                                         /*n=*/shape.n,
                                         /*k=*/shape.d,
                                         /*a_stride_m=*/shape.d,
@@ -173,10 +173,10 @@ flashone::StridedMatmulShape make_strided_shape(const ShapeCase& shape) {
                                         /*c_stride_n=*/1};
 }
 
-flashone::RuntimePlan make_plan(const ShapeCase& shape,
+onednn_flash::RuntimePlan make_plan(const ShapeCase& shape,
                                 const ScoreCase& score_case,
                                 bool force_reference) {
-    flashone::RuntimePlanInput input;
+    onednn_flash::RuntimePlanInput input;
     input.batch = shape.batch;
     input.heads = shape.heads;
     input.query_length = static_cast<int>(shape.m);
@@ -186,16 +186,16 @@ flashone::RuntimePlan make_plan(const ShapeCase& shape,
     input.requested_score_mod = score_case.kind;
     input.has_scale = score_case.has_scale;
     input.scale_value = score_case.scale;
-    input.requested_bias_kind = score_case.has_bias ? flashone::BiasKind::SameShapeTile
-                                                    : flashone::BiasKind::None;
+    input.requested_bias_kind = score_case.has_bias ? onednn_flash::BiasKind::SameShapeTile
+                                                    : onednn_flash::BiasKind::None;
     input.force_reference = force_reference;
     input.enable_onednn = true;
-#ifdef FLASHONE_HAS_ONEDNN
+#ifdef ONEDNN_FLASH_HAS_ONEDNN
     constexpr bool one_dnn_available = true;
 #else
     constexpr bool one_dnn_available = false;
 #endif
-    return flashone::make_runtime_plan(input,
+    return onednn_flash::make_runtime_plan(input,
                                        /*one_dnn_available=*/one_dnn_available,
                                        /*one_dnn_post_ops_available=*/one_dnn_available);
 }
@@ -241,21 +241,21 @@ Record run_record(const ShapeCase& shape,
 
     std::vector<float> actual(tile_count * shape.m * shape.n, 0.0f);
     const auto strided_shape = make_strided_shape(shape);
-    flashone::QkScoreTileDebugInfo debug;
-    flashone::QkScoreTileExecuteOptions execute_options;
+    onednn_flash::QkScoreTileDebugInfo debug;
+    onednn_flash::QkScoreTileExecuteOptions execute_options;
     const bool defer_wait = requested_backend == "onednn_matmul" && sync_mode == "defer_until_record_end";
     if (defer_wait) {
-        execute_options.sync_mode = flashone::QkScoreTileSyncMode::DeferUntilExplicitWait;
+        execute_options.sync_mode = onednn_flash::QkScoreTileSyncMode::DeferUntilExplicitWait;
     }
 
     auto execute_once = [&]() {
         std::fill(actual.begin(), actual.end(), 0.0f);
         for (std::size_t tile = 0; tile < tile_count; ++tile) {
-            flashone::QkScoreTilePostOpsInput post_ops;
+            onednn_flash::QkScoreTilePostOpsInput post_ops;
             post_ops.additive_bias = score_case.has_bias ? bias.data() + tile * shape.m * shape.n : nullptr;
             post_ops.additive_bias_stride_m = bias_stride_m;
             post_ops.additive_bias_stride_n = bias_stride_n;
-            flashone::qk_score_tile_inplace_with_options(q.data() + tile * shape.m * shape.d,
+            onednn_flash::qk_score_tile_inplace_with_options(q.data() + tile * shape.m * shape.d,
                                                          k.data() + tile * shape.n * shape.d,
                                                          actual.data() + tile * shape.m * shape.n,
                                                          strided_shape,
@@ -265,7 +265,7 @@ Record run_record(const ShapeCase& shape,
                                                          &debug);
         }
         if (defer_wait) {
-            flashone::qk_score_tile_wait_for_onednn();
+            onednn_flash::qk_score_tile_wait_for_onednn();
         }
         volatile float sink = actual.empty() ? 0.0f : actual[0];
         (void)sink;
@@ -275,7 +275,7 @@ Record run_record(const ShapeCase& shape,
         execute_once();
     }
 
-    flashone::qk_score_tile_reset_cache_stats();
+    onednn_flash::qk_score_tile_reset_cache_stats();
 
     std::vector<double> samples_ms;
     samples_ms.reserve(static_cast<std::size_t>(repeat));
@@ -286,17 +286,17 @@ Record run_record(const ShapeCase& shape,
         samples_ms.push_back(std::chrono::duration<double, std::milli>(end - start).count());
     }
     const auto stats = summarize_samples(samples_ms);
-    const auto cache_stats = flashone::qk_score_tile_get_cache_stats();
+    const auto cache_stats = onednn_flash::qk_score_tile_get_cache_stats();
 
     Record record;
     record.shape = shape;
     record.requested_backend = requested_backend;
-    record.actual_backend = flashone::to_string(debug.backend);
-    record.qk_layout = flashone::to_string(plan.qk_layout);
+    record.actual_backend = onednn_flash::to_string(debug.backend);
+    record.qk_layout = onednn_flash::to_string(plan.qk_layout);
     record.score_mod = plan.score_mod_plan.signature;
     record.sync_mode = sync_mode;
-    record.lowering_status = flashone::to_string(debug.lowering_status);
-    record.fallback_reason = flashone::to_string(debug.fallback_reason);
+    record.lowering_status = onednn_flash::to_string(debug.lowering_status);
+    record.fallback_reason = onednn_flash::to_string(debug.fallback_reason);
     record.used_onednn_post_ops = debug.used_onednn_post_ops;
     record.max_abs_diff = max_abs_diff(expected, actual);
     record.time_ms = stats.mean_ms;
@@ -332,7 +332,7 @@ void write_json(const std::string& path, const std::vector<Record>& records) {
     }
     out << std::fixed << std::setprecision(6);
     out << "{\n";
-    out << "  \"schema\": \"flashone.cpp_qk_postops_benchmark.v4\",\n";
+    out << "  \"schema\": \"onednn_flash.cpp_qk_postops_benchmark.v4\",\n";
     out << "  \"benchmark_level\": \"cpp_qk_score_tile\",\n";
     out << "  \"git_commit\": \"" << git_commit_string() << "\",\n";
     out << "  \"one_dnn_version\": \"" << one_dnn_version_string() << "\",\n";
@@ -443,10 +443,10 @@ int main(int argc, char** argv) {
     const std::vector<ShapeCase> shapes{{1, 1, 64, 64, 32, 32},
                                         {1, 1, 128, 128, 64, 64},
                                         {1, 4, 128, 128, 64, 64}};
-    const std::vector<ScoreCase> score_cases{{"none", flashone::ScoreModKind::None, false, 1.0f, false},
-                                             {"scale", flashone::ScoreModKind::Scale, true, 0.125f, false},
+    const std::vector<ScoreCase> score_cases{{"none", onednn_flash::ScoreModKind::None, false, 1.0f, false},
+                                             {"scale", onednn_flash::ScoreModKind::Scale, true, 0.125f, false},
                                              {"scale_additive_bias",
-                                              flashone::ScoreModKind::ScaleAdditiveBias,
+                                              onednn_flash::ScoreModKind::ScaleAdditiveBias,
                                               true,
                                               0.125f,
                                               true}};

@@ -3,7 +3,7 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "flashone"
+name = "onednn_flash"
 version = "0.1.0"
 description = "CPU FlexAttention prototype based on Flash-style tiling and oneDNN-oriented design"
 readme = "README.md"

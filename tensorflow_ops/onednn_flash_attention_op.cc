@@ -1,4 +1,4 @@
-#include "flashone/batched_attention.hpp"
+#include "onednn_flash/batched_attention.hpp"
 
 #include <cmath>
 #include <exception>
@@ -10,7 +10,7 @@
 
 using namespace tensorflow;  // NOLINT
 
-REGISTER_OP("FlashOneAttention")
+REGISTER_OP("OneDNNFlashAttention")
     .Input("q: float")
     .Input("k: float")
     .Input("v: float")
@@ -37,9 +37,9 @@ REGISTER_OP("FlashOneAttention")
         return OkStatus();
     });
 
-class FlashOneAttentionOp final : public OpKernel {
+class OneDNNFlashAttentionOp final : public OpKernel {
 public:
-    explicit FlashOneAttentionOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
+    explicit OneDNNFlashAttentionOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
         OP_REQUIRES_OK(ctx, ctx->GetAttr("causal", &causal_));
         OP_REQUIRES_OK(ctx, ctx->GetAttr("query_block_size", &query_block_size_));
         OP_REQUIRES_OK(ctx, ctx->GetAttr("key_block_size", &key_block_size_));
@@ -78,7 +78,7 @@ public:
         Tensor* out = nullptr;
         OP_REQUIRES_OK(ctx, ctx->allocate_output(0, out_shape, &out));
 
-        flashone::BatchedAttentionShape shape{
+        onednn_flash::BatchedAttentionShape shape{
             static_cast<std::size_t>(q.dim_size(0)),
             static_cast<std::size_t>(q.dim_size(1)),
             static_cast<std::size_t>(q.dim_size(2)),
@@ -87,32 +87,32 @@ public:
             static_cast<std::size_t>(v.dim_size(3)),
         };
 
-        flashone::AttentionOptions options;
+        onednn_flash::AttentionOptions options;
         options.scale = 1.0f / std::sqrt(static_cast<float>(shape.head_dim));
         options.causal = causal_;
         options.query_block_size = static_cast<std::size_t>(query_block_size_);
         options.key_block_size = static_cast<std::size_t>(key_block_size_);
         if (qk_tile_layout_ == "copied_transposed") {
-            options.qk_tile_layout = flashone::QkTileLayout::CopiedTransposed;
+            options.qk_tile_layout = onednn_flash::QkTileLayout::CopiedTransposed;
         } else if (qk_tile_layout_ == "brgemm_transformed_k") {
-            options.qk_tile_layout = flashone::QkTileLayout::BrgemmTransformedK;
+            options.qk_tile_layout = onednn_flash::QkTileLayout::BrgemmTransformedK;
         } else {
-            options.qk_tile_layout = flashone::QkTileLayout::StridedK;
+            options.qk_tile_layout = onednn_flash::QkTileLayout::StridedK;
         }
-#ifdef FLASHONE_HAS_ONEDNN
+#ifdef ONEDNN_FLASH_HAS_ONEDNN
         if (use_onednn_) {
             const auto kernel_kind = tile_kernel_ == "onednn_brgemm"
-                                         ? flashone::TileKernelKind::OneDnnBrgemm
-                                         : flashone::TileKernelKind::OneDnn;
+                                         ? onednn_flash::TileKernelKind::OneDnnBrgemm
+                                         : onednn_flash::TileKernelKind::OneDnn;
             options.qk_tile_kernel = kernel_kind;
             options.pv_tile_kernel = kernel_kind;
-            if (kernel_kind == flashone::TileKernelKind::OneDnnBrgemm) {
-#ifndef FLASHONE_HAS_ONEDNN_BRGEMM
+            if (kernel_kind == onednn_flash::TileKernelKind::OneDnnBrgemm) {
+#ifndef ONEDNN_FLASH_HAS_ONEDNN_BRGEMM
                 ctx->CtxFailure(errors::Internal(
-                    "tile_kernel='onednn_brgemm' requested but FlashOne was built without oneDNN BRGEMM ukernel support"));
+                    "tile_kernel='onednn_brgemm' requested but OneDNNFlash was built without oneDNN BRGEMM ukernel support"));
                 return;
 #else
-                if (options.qk_tile_layout == flashone::QkTileLayout::StridedK) {
+                if (options.qk_tile_layout == onednn_flash::QkTileLayout::StridedK) {
                     ctx->CtxFailure(errors::InvalidArgument(
                         "tile_kernel='onednn_brgemm' does not support qk_tile_layout='strided_k'; use 'copied_transposed' or 'brgemm_transformed_k'"));
                     return;
@@ -123,14 +123,14 @@ public:
 #endif
 
         try {
-            flashone::flash_attention_batched_qk_pv_tile(q.flat<float>().data(),
+            onednn_flash::flash_attention_batched_qk_pv_tile(q.flat<float>().data(),
                                                          k.flat<float>().data(),
                                                          v.flat<float>().data(),
                                                          out->flat<float>().data(),
                                                          shape,
                                                          options);
         } catch (const std::exception& e) {
-            ctx->CtxFailure(errors::Internal("FlashOneAttention failed: ", e.what()));
+            ctx->CtxFailure(errors::Internal("OneDNNFlashAttention failed: ", e.what()));
         }
     }
 
@@ -143,4 +143,4 @@ private:
     std::string qk_tile_layout_ = "strided_k";
 };
 
-REGISTER_KERNEL_BUILDER(Name("FlashOneAttention").Device(DEVICE_CPU), FlashOneAttentionOp);
+REGISTER_KERNEL_BUILDER(Name("OneDNNFlashAttention").Device(DEVICE_CPU), OneDNNFlashAttentionOp);

@@ -1,8 +1,8 @@
 #pragma once
 
-#include "flashone/tile_kernel.hpp"
+#include "onednn_flash/tile_kernel.hpp"
 
-namespace flashone {
+namespace onednn_flash {
 
 std::vector<float> matmul_tile_onednn(const std::vector<float>& a,
                                       const std::vector<float>& b,
@@ -14,4 +14,4 @@ void matmul_tile_onednn_inplace(const float* a,
                                  float* c,
                                  const MatmulShape& shape);
 
-}  // namespace flashone
+}  // namespace onednn_flash

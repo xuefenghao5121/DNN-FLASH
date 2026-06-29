@@ -1,8 +1,8 @@
-#include "flashone/backend.hpp"
+#include "onednn_flash/backend.hpp"
 
 #include <stdexcept>
 
-namespace flashone {
+namespace onednn_flash {
 
 const char* backend_name(AttentionBackendKind kind) {
     switch (kind) {
@@ -29,4 +29,4 @@ std::vector<float> run_attention(AttentionBackendKind kind,
     throw std::invalid_argument("Unknown attention backend kind");
 }
 
-}  // namespace flashone
+}  // namespace onednn_flash

@@ -1,4 +1,4 @@
-#include "flashone/onednn_tile_kernel.hpp"
+#include "onednn_flash/onednn_tile_kernel.hpp"
 
 #include <oneapi/dnnl/dnnl.hpp>
 
@@ -7,7 +7,7 @@
 #include <stdexcept>
 #include <tuple>
 
-namespace flashone {
+namespace onednn_flash {
 namespace {
 
 struct CachedMatmulPrimitive {
@@ -158,4 +158,4 @@ void matmul_tile_onednn_strided_inplace(const float* a,
     ctx.stream.wait();
 }
 
-}  // namespace flashone
+}  // namespace onednn_flash

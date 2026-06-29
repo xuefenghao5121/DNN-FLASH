@@ -1,10 +1,10 @@
 #pragma once
 
-#include "flashone/score_mod_plan.hpp"
+#include "onednn_flash/score_mod_plan.hpp"
 
 #include <string>
 
-namespace flashone {
+namespace onednn_flash {
 
 enum class BlockMaskKind {
     None,
@@ -87,7 +87,7 @@ struct RuntimePlan {
     LoweringStatus qk_lowering_status{LoweringStatus::ReferenceFallback};
 
     bool uses_onednn_post_ops{false};
-    bool requires_flashone_epilogue{false};
+    bool requires_onednn_flash_epilogue{false};
     bool requires_mask_tile_generator{false};
 
     FallbackReason fallback_reason{FallbackReason::None};
@@ -112,4 +112,4 @@ RuntimePlan make_runtime_plan(const RuntimePlanInput& input,
                               bool one_dnn_post_ops_available);
 RuntimePlanCacheKey make_runtime_plan_cache_key(const RuntimePlan& plan);
 
-}  // namespace flashone
+}  // namespace onednn_flash

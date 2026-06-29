@@ -3,9 +3,9 @@
 #include <cstddef>
 #include <vector>
 
-namespace flashone {
+namespace onednn_flash {
 
-#ifdef FLASHONE_HAS_ONEDNN_BRGEMM
+#ifdef ONEDNN_FLASH_HAS_ONEDNN_BRGEMM
 struct BrgemmKernelContext;
 #endif
 
@@ -40,7 +40,7 @@ void matmul_tile_inplace(TileKernelKind kind,
                          const float* a, const float* b, float* c,
                          const MatmulShape& shape);
 
-#ifdef FLASHONE_HAS_ONEDNN_BRGEMM
+#ifdef ONEDNN_FLASH_HAS_ONEDNN_BRGEMM
 // Variant that lets callers provide BRGEMM scratchpad storage for reuse across
 // hot tile iterations. Non-BRGEMM kernels ignore the context.
 void matmul_tile_inplace(TileKernelKind kind,
@@ -71,4 +71,4 @@ std::vector<float> matmul_tile_reference(const std::vector<float>& a,
 void matmul_tile_reference_inplace(const float* a, const float* b, float* c,
                                     const MatmulShape& shape);
 
-}  // namespace flashone
+}  // namespace onednn_flash

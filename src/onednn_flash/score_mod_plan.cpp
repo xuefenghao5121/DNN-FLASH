@@ -1,8 +1,8 @@
-#include "flashone/score_mod_plan.hpp"
+#include "onednn_flash/score_mod_plan.hpp"
 
 #include <sstream>
 
-namespace flashone {
+namespace onednn_flash {
 
 const char* to_string(DataType value) {
     switch (value) {
@@ -56,8 +56,8 @@ const char* to_string(LoweringStatus value) {
             return "lowered_to_onednn_post_ops";
         case LoweringStatus::PartiallyLowered:
             return "partially_lowered";
-        case LoweringStatus::FlashOneEpilogue:
-            return "flashone_epilogue";
+        case LoweringStatus::OneDNNFlashEpilogue:
+            return "onednn_flash_epilogue";
         case LoweringStatus::ReferenceFallback:
             return "reference_fallback";
         case LoweringStatus::Unsupported:
@@ -142,7 +142,7 @@ ScoreModPlan make_score_mod_plan(ScoreModKind requested_kind,
     }
 
     if (plan.has_bias && requested_bias_kind != BiasKind::SameShapeTile) {
-        plan.lowering_status = LoweringStatus::FlashOneEpilogue;
+        plan.lowering_status = LoweringStatus::OneDNNFlashEpilogue;
         plan.fallback_reason = requested_bias_kind == BiasKind::BroadcastRow ||
                                        requested_bias_kind == BiasKind::BroadcastCol
                                    ? FallbackReason::UnsupportedBroadcast
@@ -152,7 +152,7 @@ ScoreModPlan make_score_mod_plan(ScoreModKind requested_kind,
     }
 
     if (!one_dnn_post_ops_available && requested_kind != ScoreModKind::None) {
-        plan.lowering_status = LoweringStatus::FlashOneEpilogue;
+        plan.lowering_status = LoweringStatus::OneDNNFlashEpilogue;
         plan.fallback_reason = FallbackReason::UnsupportedPostOp;
     } else {
         plan.lowering_status = LoweringStatus::LoweredToOneDnnPostOps;
@@ -181,4 +181,4 @@ ScoreModPlan make_score_mod_plan(ScoreModKind requested_kind,
     return plan;
 }
 
-}  // namespace flashone
+}  // namespace onednn_flash

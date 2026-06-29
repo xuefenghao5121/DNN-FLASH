@@ -1,10 +1,10 @@
-#include "flashone/batched_attention.hpp"
+#include "onednn_flash/batched_attention.hpp"
 
 #include <algorithm>
 #include <stdexcept>
 #include <vector>
 
-namespace flashone {
+namespace onednn_flash {
 
 void flash_attention_batched_qk_pv_tile(const float* q,
                                         const float* k,
@@ -48,4 +48,4 @@ void flash_attention_batched_qk_pv_tile(const float* q,
     }
 }
 
-}  // namespace flashone
+}  // namespace onednn_flash

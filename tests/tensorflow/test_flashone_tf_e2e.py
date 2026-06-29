@@ -3,17 +3,17 @@ from __future__ import annotations
 import numpy as np
 import tensorflow as tf
 
-from benchmarks.tensorflow.bench_flashone_tf_e2e import (
+from benchmarks.tensorflow.bench_onednn_flash_tf_e2e import (
     BenchConfig,
     decoder_block,
-    flashone_attention_tf,
+    onednn_flash_attention_tf,
     make_decoder_weights,
     stable_values,
     tf_attention,
 )
 
 
-def test_flashone_custom_op_can_replace_attention_in_decoder_block() -> None:
+def test_onednn_flash_custom_op_can_replace_attention_in_decoder_block() -> None:
     cfg = BenchConfig(
         batch=1,
         heads=2,
@@ -40,7 +40,7 @@ def test_flashone_custom_op_can_replace_attention_in_decoder_block() -> None:
         x,
         weights,
         cfg,
-        lambda q, k, v: flashone_attention_tf(q, k, v, cfg),
+        lambda q, k, v: onednn_flash_attention_tf(q, k, v, cfg),
     )
 
     np.testing.assert_allclose(actual.numpy(), expected.numpy(), rtol=2e-5, atol=2e-5)

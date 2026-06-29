@@ -5,76 +5,76 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-option(FLASHONE_ENABLE_NATIVE "Enable -march=native for local benchmarking" OFF)
-option(FLASHONE_ENABLE_ONEDNN "Build optional oneDNN smoke/integration targets" ON)
-option(FLASHONE_BUILD_TENSORFLOW_OP "Build TensorFlow custom op shared library" ON)
+option(ONEDNN_FLASH_ENABLE_NATIVE "Enable -march=native for local benchmarking" OFF)
+option(ONEDNN_FLASH_ENABLE_ONEDNN "Build optional oneDNN smoke/integration targets" ON)
+option(ONEDNN_FLASH_BUILD_TENSORFLOW_OP "Build TensorFlow custom op shared library" ON)
 execute_process(
   COMMAND git rev-parse --short HEAD
   WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
-  OUTPUT_VARIABLE FLASHONE_GIT_COMMIT
+  OUTPUT_VARIABLE ONEDNN_FLASH_GIT_COMMIT
   OUTPUT_STRIP_TRAILING_WHITESPACE
   ERROR_QUIET)
-if(NOT FLASHONE_GIT_COMMIT)
-  set(FLASHONE_GIT_COMMIT "unknown")
+if(NOT ONEDNN_FLASH_GIT_COMMIT)
+  set(ONEDNN_FLASH_GIT_COMMIT "unknown")
 endif()
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
 
-add_library(flashone_core
-  src/flashone/attention.cpp
-  src/flashone/backend.cpp
-  src/flashone/score_mod_plan.cpp
-  src/flashone/runtime_plan.cpp
-  src/flashone/qk_score_tile.cpp
-  src/flashone/tile_kernel.cpp
-  src/flashone/attention_workspace.cpp
-  src/flashone/batched_attention.cpp
+add_library(onednn_flash_core
+  src/onednn_flash/attention.cpp
+  src/onednn_flash/backend.cpp
+  src/onednn_flash/score_mod_plan.cpp
+  src/onednn_flash/runtime_plan.cpp
+  src/onednn_flash/qk_score_tile.cpp
+  src/onednn_flash/tile_kernel.cpp
+  src/onednn_flash/attention_workspace.cpp
+  src/onednn_flash/batched_attention.cpp
 )
-target_include_directories(flashone_core PUBLIC include PRIVATE src)
-set_target_properties(flashone_core PROPERTIES POSITION_INDEPENDENT_CODE ON)
-target_compile_options(flashone_core PRIVATE -Wall -Wextra -Wpedantic)
-if(FLASHONE_ENABLE_NATIVE)
-  target_compile_options(flashone_core PRIVATE -march=native)
+target_include_directories(onednn_flash_core PUBLIC include PRIVATE src)
+set_target_properties(onednn_flash_core PROPERTIES POSITION_INDEPENDENT_CODE ON)
+target_compile_options(onednn_flash_core PRIVATE -Wall -Wextra -Wpedantic)
+if(ONEDNN_FLASH_ENABLE_NATIVE)
+  target_compile_options(onednn_flash_core PRIVATE -march=native)
 endif()
 
-add_executable(flashone_cpp_tests tests/cpp/test_attention.cpp)
-target_link_libraries(flashone_cpp_tests PRIVATE flashone_core)
+add_executable(onednn_flash_cpp_tests tests/cpp/test_attention.cpp)
+target_link_libraries(onednn_flash_cpp_tests PRIVATE onednn_flash_core)
 
-add_executable(flashone_backend_tests tests/cpp/test_backend.cpp)
-target_link_libraries(flashone_backend_tests PRIVATE flashone_core)
+add_executable(onednn_flash_backend_tests tests/cpp/test_backend.cpp)
+target_link_libraries(onednn_flash_backend_tests PRIVATE onednn_flash_core)
 
-add_executable(flashone_tile_kernel_tests tests/cpp/test_tile_kernel.cpp)
-target_link_libraries(flashone_tile_kernel_tests PRIVATE flashone_core)
+add_executable(onednn_flash_tile_kernel_tests tests/cpp/test_tile_kernel.cpp)
+target_link_libraries(onednn_flash_tile_kernel_tests PRIVATE onednn_flash_core)
 
-add_executable(flashone_runtime_plan_tests tests/cpp/test_runtime_plan.cpp)
-target_link_libraries(flashone_runtime_plan_tests PRIVATE flashone_core)
+add_executable(onednn_flash_runtime_plan_tests tests/cpp/test_runtime_plan.cpp)
+target_link_libraries(onednn_flash_runtime_plan_tests PRIVATE onednn_flash_core)
 
-add_executable(flashone_qk_score_tile_tests tests/cpp/test_qk_score_tile.cpp)
-target_link_libraries(flashone_qk_score_tile_tests PRIVATE flashone_core)
-target_include_directories(flashone_qk_score_tile_tests PRIVATE src)
+add_executable(onednn_flash_qk_score_tile_tests tests/cpp/test_qk_score_tile.cpp)
+target_link_libraries(onednn_flash_qk_score_tile_tests PRIVATE onednn_flash_core)
+target_include_directories(onednn_flash_qk_score_tile_tests PRIVATE src)
 
-add_executable(flashone_q_tile_attention_tests tests/cpp/test_q_tile_attention.cpp)
-target_link_libraries(flashone_q_tile_attention_tests PRIVATE flashone_core)
+add_executable(onednn_flash_q_tile_attention_tests tests/cpp/test_q_tile_attention.cpp)
+target_link_libraries(onednn_flash_q_tile_attention_tests PRIVATE onednn_flash_core)
 
-add_executable(flashone_qk_pv_tile_attention_tests tests/cpp/test_qk_pv_tile_attention.cpp)
-target_link_libraries(flashone_qk_pv_tile_attention_tests PRIVATE flashone_core)
+add_executable(onednn_flash_qk_pv_tile_attention_tests tests/cpp/test_qk_pv_tile_attention.cpp)
+target_link_libraries(onednn_flash_qk_pv_tile_attention_tests PRIVATE onednn_flash_core)
 
-add_executable(flashone_workspace_attention_tests tests/cpp/test_workspace_attention.cpp)
-target_link_libraries(flashone_workspace_attention_tests PRIVATE flashone_core)
+add_executable(onednn_flash_workspace_attention_tests tests/cpp/test_workspace_attention.cpp)
+target_link_libraries(onednn_flash_workspace_attention_tests PRIVATE onednn_flash_core)
 
-add_executable(flashone_bench benchmarks/bench_attention.cpp)
-target_link_libraries(flashone_bench PRIVATE flashone_core)
+add_executable(onednn_flash_bench benchmarks/bench_attention.cpp)
+target_link_libraries(onednn_flash_bench PRIVATE onednn_flash_core)
 
-add_executable(flashone_qk_postops_bench benchmarks/bench_qk_postops.cpp)
-target_link_libraries(flashone_qk_postops_bench PRIVATE flashone_core)
-target_include_directories(flashone_qk_postops_bench PRIVATE src)
-target_compile_definitions(flashone_qk_postops_bench PRIVATE FLASHONE_GIT_COMMIT="${FLASHONE_GIT_COMMIT}")
+add_executable(onednn_flash_qk_postops_bench benchmarks/bench_qk_postops.cpp)
+target_link_libraries(onednn_flash_qk_postops_bench PRIVATE onednn_flash_core)
+target_include_directories(onednn_flash_qk_postops_bench PRIVATE src)
+target_compile_definitions(onednn_flash_qk_postops_bench PRIVATE ONEDNN_FLASH_GIT_COMMIT="${ONEDNN_FLASH_GIT_COMMIT}")
 
-if(FLASHONE_ENABLE_ONEDNN)
+if(ONEDNN_FLASH_ENABLE_ONEDNN)
   find_package(LocalDnnl QUIET)
   if(DNNL_FOUND)
-    target_sources(flashone_core PRIVATE src/flashone/onednn_tile_kernel.cpp)
-    target_compile_definitions(flashone_core PUBLIC FLASHONE_HAS_ONEDNN=1)
-    target_link_libraries(flashone_core PUBLIC dnnl::dnnl)
+    target_sources(onednn_flash_core PRIVATE src/onednn_flash/onednn_tile_kernel.cpp)
+    target_compile_definitions(onednn_flash_core PUBLIC ONEDNN_FLASH_HAS_ONEDNN=1)
+    target_link_libraries(onednn_flash_core PUBLIC dnnl::dnnl)
 
     include(CheckCXXSourceCompiles)
     set(CMAKE_REQUIRED_INCLUDES "${DNNL_INCLUDE_DIR}")
@@ -88,14 +88,14 @@ if(FLASHONE_ENABLE_ONEDNN)
           dnnl::memory::data_type::f32, dnnl::memory::data_type::f32);
         return pack == dnnl::ukernel::pack_type::undef;
       }
-    " FLASHONE_ONEDNN_BRGEMM_COMPILES)
+    " ONEDNN_FLASH_ONEDNN_BRGEMM_COMPILES)
     unset(CMAKE_REQUIRED_INCLUDES)
     unset(CMAKE_REQUIRED_LIBRARIES)
     unset(CMAKE_REQUIRED_DEFINITIONS)
 
-    if(FLASHONE_ONEDNN_BRGEMM_COMPILES)
-      target_sources(flashone_core PRIVATE src/flashone/onednn_brgemm_tile_kernel.cpp)
-      target_compile_definitions(flashone_core PUBLIC FLASHONE_HAS_ONEDNN_BRGEMM=1 DNNL_EXPERIMENTAL_UKERNEL)
+    if(ONEDNN_FLASH_ONEDNN_BRGEMM_COMPILES)
+      target_sources(onednn_flash_core PRIVATE src/onednn_flash/onednn_brgemm_tile_kernel.cpp)
+      target_compile_definitions(onednn_flash_core PUBLIC ONEDNN_FLASH_HAS_ONEDNN_BRGEMM=1 DNNL_EXPERIMENTAL_UKERNEL)
       message(STATUS "oneDNN BRGEMM ukernel API found; enabling FlashOne BRGEMM tile kernel")
     else()
       message(STATUS "oneDNN BRGEMM ukernel API not found; BRGEMM tile kernel disabled")
@@ -104,32 +104,32 @@ if(FLASHONE_ENABLE_ONEDNN)
       endif()
     endif()
 
-    add_executable(flashone_dnnl_smoke tests/cpp/test_dnnl_smoke.cpp)
-    target_link_libraries(flashone_dnnl_smoke PRIVATE dnnl::dnnl)
-    set_target_properties(flashone_dnnl_smoke PROPERTIES
+    add_executable(onednn_flash_dnnl_smoke tests/cpp/test_dnnl_smoke.cpp)
+    target_link_libraries(onednn_flash_dnnl_smoke PRIVATE dnnl::dnnl)
+    set_target_properties(onednn_flash_dnnl_smoke PROPERTIES
       BUILD_RPATH "${CMAKE_SOURCE_DIR}/third_party/onednn-local/usr/lib/x86_64-linux-gnu;${CMAKE_SOURCE_DIR}/third_party/onednn-debian-3.12/usr/lib/x86_64-linux-gnu")
 
-    add_executable(flashone_onednn_postops_capability tests/cpp/test_onednn_postops_capability.cpp)
-    target_link_libraries(flashone_onednn_postops_capability PRIVATE dnnl::dnnl)
-    if(FLASHONE_ONEDNN_BRGEMM_COMPILES)
-      target_compile_definitions(flashone_onednn_postops_capability PRIVATE FLASHONE_HAS_ONEDNN_BRGEMM=1 DNNL_EXPERIMENTAL_UKERNEL)
+    add_executable(onednn_flash_onednn_postops_capability tests/cpp/test_onednn_postops_capability.cpp)
+    target_link_libraries(onednn_flash_onednn_postops_capability PRIVATE dnnl::dnnl)
+    if(ONEDNN_FLASH_ONEDNN_BRGEMM_COMPILES)
+      target_compile_definitions(onednn_flash_onednn_postops_capability PRIVATE ONEDNN_FLASH_HAS_ONEDNN_BRGEMM=1 DNNL_EXPERIMENTAL_UKERNEL)
     endif()
-    set_target_properties(flashone_onednn_postops_capability PROPERTIES
+    set_target_properties(onednn_flash_onednn_postops_capability PROPERTIES
       BUILD_RPATH "${CMAKE_SOURCE_DIR}/third_party/onednn-local/usr/lib/x86_64-linux-gnu;${CMAKE_SOURCE_DIR}/third_party/onednn-debian-3.12/usr/lib/x86_64-linux-gnu")
 
-    # Stage 1 minimal validation test (standalone, no dependencies on flashone_core)
-    add_executable(flashone_stage1_minimal tests/cpp/test_stage1_minimal.cpp)
-    target_link_libraries(flashone_stage1_minimal PRIVATE dnnl::dnnl)
-    set_target_properties(flashone_stage1_minimal PROPERTIES
+    # Stage 1 minimal validation test (standalone, no dependencies on onednn_flash_core)
+    add_executable(onednn_flash_stage1_minimal tests/cpp/test_stage1_minimal.cpp)
+    target_link_libraries(onednn_flash_stage1_minimal PRIVATE dnnl::dnnl)
+    set_target_properties(onednn_flash_stage1_minimal PROPERTIES
       BUILD_RPATH "${CMAKE_SOURCE_DIR}/third_party/onednn-local/usr/lib/x86_64-linux-gnu;${CMAKE_SOURCE_DIR}/third_party/onednn-debian-3.12/usr/lib/x86_64-linux-gnu")
     message(STATUS "Stage 1 minimal validation test enabled")
   else()
-    message(STATUS "oneDNN not found; skipping flashone_dnnl_smoke")
+    message(STATUS "oneDNN not found; skipping onednn_flash_dnnl_smoke")
   endif()
 endif()
 
 
-if(FLASHONE_BUILD_TENSORFLOW_OP)
+if(ONEDNN_FLASH_BUILD_TENSORFLOW_OP)
   execute_process(
     COMMAND python3 -c "import tensorflow as tf; print(' '.join(tf.sysconfig.get_compile_flags()))"
     OUTPUT_VARIABLE TF_COMPILE_FLAGS_RAW
@@ -143,44 +143,44 @@ if(FLASHONE_BUILD_TENSORFLOW_OP)
   if(TF_COMPILE_FLAGS_RAW AND TF_LINK_FLAGS_RAW)
     separate_arguments(TF_COMPILE_FLAGS UNIX_COMMAND "${TF_COMPILE_FLAGS_RAW}")
     separate_arguments(TF_LINK_FLAGS UNIX_COMMAND "${TF_LINK_FLAGS_RAW}")
-    add_library(flashone_tf_attention SHARED tensorflow_ops/flashone_attention_op.cc)
-    target_link_libraries(flashone_tf_attention PRIVATE flashone_core)
-    target_compile_options(flashone_tf_attention PRIVATE ${TF_COMPILE_FLAGS})
-    target_link_options(flashone_tf_attention PRIVATE ${TF_LINK_FLAGS})
-    set_target_properties(flashone_tf_attention PROPERTIES
+    add_library(onednn_flash_tf_attention SHARED tensorflow_ops/onednn_flash_attention_op.cc)
+    target_link_libraries(onednn_flash_tf_attention PRIVATE onednn_flash_core)
+    target_compile_options(onednn_flash_tf_attention PRIVATE ${TF_COMPILE_FLAGS})
+    target_link_options(onednn_flash_tf_attention PRIVATE ${TF_LINK_FLAGS})
+    set_target_properties(onednn_flash_tf_attention PROPERTIES
       PREFIX ""
-      OUTPUT_NAME "flashone_tf_attention"
+      OUTPUT_NAME "onednn_flash_tf_attention"
       BUILD_RPATH "${CMAKE_SOURCE_DIR}/third_party/onednn-local/usr/lib/x86_64-linux-gnu;${CMAKE_SOURCE_DIR}/third_party/onednn-debian-3.12/usr/lib/x86_64-linux-gnu")
   else()
-    message(STATUS "TensorFlow compile/link flags unavailable; skipping flashone_tf_attention")
+    message(STATUS "TensorFlow compile/link flags unavailable; skipping onednn_flash_tf_attention")
   endif()
 endif()
 
 include(CTest)
 if(BUILD_TESTING)
-  add_test(NAME flashone_cpp_tests COMMAND flashone_cpp_tests)
-  add_test(NAME flashone_backend_tests COMMAND flashone_backend_tests)
-  add_test(NAME flashone_tile_kernel_tests COMMAND flashone_tile_kernel_tests)
-  add_test(NAME flashone_runtime_plan_tests COMMAND flashone_runtime_plan_tests)
-  add_test(NAME flashone_qk_score_tile_tests COMMAND flashone_qk_score_tile_tests)
-  add_test(NAME flashone_q_tile_attention_tests COMMAND flashone_q_tile_attention_tests)
-  add_test(NAME flashone_qk_pv_tile_attention_tests COMMAND flashone_qk_pv_tile_attention_tests)
-  add_test(NAME flashone_workspace_attention_tests COMMAND flashone_workspace_attention_tests)
-  add_test(NAME flashone_qk_postops_bench_smoke COMMAND flashone_qk_postops_bench
+  add_test(NAME onednn_flash_cpp_tests COMMAND onednn_flash_cpp_tests)
+  add_test(NAME onednn_flash_backend_tests COMMAND onednn_flash_backend_tests)
+  add_test(NAME onednn_flash_tile_kernel_tests COMMAND onednn_flash_tile_kernel_tests)
+  add_test(NAME onednn_flash_runtime_plan_tests COMMAND onednn_flash_runtime_plan_tests)
+  add_test(NAME onednn_flash_qk_score_tile_tests COMMAND onednn_flash_qk_score_tile_tests)
+  add_test(NAME onednn_flash_q_tile_attention_tests COMMAND onednn_flash_q_tile_attention_tests)
+  add_test(NAME onednn_flash_qk_pv_tile_attention_tests COMMAND onednn_flash_qk_pv_tile_attention_tests)
+  add_test(NAME onednn_flash_workspace_attention_tests COMMAND onednn_flash_workspace_attention_tests)
+  add_test(NAME onednn_flash_qk_postops_bench_smoke COMMAND onednn_flash_qk_postops_bench
     --warmup 1 --repeat 1
     --output-json "${CMAKE_BINARY_DIR}/stage-1-postops-smoke.json"
     --output-csv "${CMAKE_BINARY_DIR}/stage-1-postops-smoke.csv")
-  set_tests_properties(flashone_qk_postops_bench_smoke PROPERTIES
+  set_tests_properties(onednn_flash_qk_postops_bench_smoke PROPERTIES
     WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
-  if(TARGET flashone_dnnl_smoke)
-    add_test(NAME flashone_dnnl_smoke COMMAND flashone_dnnl_smoke)
+  if(TARGET onednn_flash_dnnl_smoke)
+    add_test(NAME onednn_flash_dnnl_smoke COMMAND onednn_flash_dnnl_smoke)
   endif()
-  if(TARGET flashone_onednn_postops_capability)
-    add_test(NAME flashone_onednn_postops_capability COMMAND flashone_onednn_postops_capability)
-    set_tests_properties(flashone_onednn_postops_capability PROPERTIES
+  if(TARGET onednn_flash_onednn_postops_capability)
+    add_test(NAME onednn_flash_onednn_postops_capability COMMAND onednn_flash_onednn_postops_capability)
+    set_tests_properties(onednn_flash_onednn_postops_capability PROPERTIES
       WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
   endif()
-  if(TARGET flashone_stage1_minimal)
-    add_test(NAME flashone_stage1_minimal COMMAND flashone_stage1_minimal)
+  if(TARGET onednn_flash_stage1_minimal)
+    add_test(NAME onednn_flash_stage1_minimal COMMAND onednn_flash_stage1_minimal)
   endif()
 endif()

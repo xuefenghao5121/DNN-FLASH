@@ -1,4 +1,4 @@
-"""FlashOne Python reference package."""
+"""OneDNNFlash Python reference package."""
 
 from .reference import flash_attention_reference, standard_attention_reference
 

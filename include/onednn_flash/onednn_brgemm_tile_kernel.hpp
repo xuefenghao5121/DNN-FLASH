@@ -1,11 +1,11 @@
 #pragma once
 
-#include "flashone/tile_kernel.hpp"
+#include "onednn_flash/tile_kernel.hpp"
 
 #include <cstdint>
 #include <vector>
 
-namespace flashone {
+namespace onednn_flash {
 
 // Reusable BRGEMM scratchpad. oneDNN ukernel exposes scratchpad size per
 // generated kernel; keeping the backing storage outside the hot call avoids a
@@ -104,4 +104,4 @@ void matmul_tile_onednn_brgemm_transposed_b_inplace(const float* a,
                                                     BrgemmKernelContext& context,
                                                     bool release_hw_context);
 
-}  // namespace flashone
+}  // namespace onednn_flash
