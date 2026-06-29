@@ -11,5 +11,7 @@ data/*
 !data/.gitkeep
 experiments/outputs/
 .cache/
-third_party/
+# third_party: ignore all except README.md
+third_party/*/
+!third_party/README.md
 benchmarks/results/
