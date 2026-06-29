@@ -61,27 +61,32 @@ void onednn_qk_scale(const float* q, const float* k, float* score,
     memory k_mem(k_md, eng, const_cast<float*>(k));
     memory score_mem(score_md, eng, score);
 
-    // Create matmul primitive descriptor
-    matmul::primitive_desc matmul_pd(eng, q_md, k_md, score_md);
+    try {
+        // Create matmul primitive descriptor
+        matmul::primitive_desc matmul_pd(eng, q_md, k_md, score_md);
 
-    // Add scale post-op
-    post_ops po;
-    po.append_eltwise(algorithm::eltwise_linear, scale, 0.0f);
+        // Add scale post-op
+        post_ops po;
+        po.append_eltwise(algorithm::eltwise_linear, scale, 0.0f);
 
-    primitive_attr attr;
-    attr.set_post_ops(po);
+        primitive_attr attr;
+        attr.set_post_ops(po);
 
-    // Create primitive descriptor with post-ops
-    matmul::primitive_desc matmul_po_pd(eng, q_md, k_md, score_md, attr);
-    matmul matmul_prim(matmul_po_pd);
+        // Create primitive descriptor with post-ops
+        matmul::primitive_desc matmul_po_pd(eng, q_md, k_md, score_md, attr);
+        matmul matmul_prim(matmul_po_pd);
 
-    // Execute
-    matmul_prim.execute(s, {
-        {DNNL_ARG_SRC_0, q_mem},
-        {DNNL_ARG_SRC_1, k_mem},
-        {DNNL_ARG_DST, score_mem}
-    });
-    s.wait();
+        // Execute
+        matmul_prim.execute(s, {
+            {DNNL_ARG_SRC_0, q_mem},
+            {DNNL_ARG_SRC_1, k_mem},
+            {DNNL_ARG_DST, score_mem}
+        });
+        s.wait();
+    } catch (const dnnl::error& e) {
+        std::cerr << "oneDNN error: " << e.what() << ", status: " << e.status << std::endl;
+        throw;
+    }
 }
 
 // Test case

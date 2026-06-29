@@ -80,12 +80,17 @@ if(ONEDNN_FLASH_ENABLE_ONEDNN)
     endif()
 
 
-    # Stage 1 minimal validation test (standalone, no dependencies on onednn_flash_core)
+    # Stage 1 validation tests (standalone, no dependencies on onednn_flash_core)
+    add_executable(onednn_flash_stage1_simple tests/cpp/test_stage1_simple.cpp)
+    target_link_libraries(onednn_flash_stage1_simple PRIVATE dnnl::dnnl)
+    set_target_properties(onednn_flash_stage1_simple PROPERTIES
+      BUILD_RPATH "${CMAKE_SOURCE_DIR}/third_party/onednn-local/usr/lib/x86_64-linux-gnu;${CMAKE_SOURCE_DIR}/third_party/onednn-debian-3.12/usr/lib/x86_64-linux-gnu")
+
     add_executable(onednn_flash_stage1_minimal tests/cpp/test_stage1_minimal.cpp)
     target_link_libraries(onednn_flash_stage1_minimal PRIVATE dnnl::dnnl)
     set_target_properties(onednn_flash_stage1_minimal PROPERTIES
       BUILD_RPATH "${CMAKE_SOURCE_DIR}/third_party/onednn-local/usr/lib/x86_64-linux-gnu;${CMAKE_SOURCE_DIR}/third_party/onednn-debian-3.12/usr/lib/x86_64-linux-gnu")
-    message(STATUS "Stage 1 minimal validation test enabled")
+    message(STATUS "Stage 1 validation tests enabled")
   else()
     message(STATUS "oneDNN not found; skipping onednn_flash_dnnl_smoke")
   endif()
