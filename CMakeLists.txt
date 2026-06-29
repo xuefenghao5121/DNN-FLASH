@@ -131,15 +131,15 @@ endif()
 
 if(ONEDNN_FLASH_BUILD_TENSORFLOW_OP)
   execute_process(
-    COMMAND python3 -c "import tensorflow as tf; print(' '.join(tf.sysconfig.get_compile_flags()))"
+    COMMAND python3 -c "import sys; import tensorflow as tf; sys.stderr = open('/dev/null', 'w'); print(' '.join(tf.sysconfig.get_compile_flags()))"
     OUTPUT_VARIABLE TF_COMPILE_FLAGS_RAW
-    OUTPUT_STRIP_TRAILING_WHITESPACE
-    ERROR_QUIET)
+    OUTPUT_STRIP_TRAILING_WHITESPACE)
   execute_process(
-    COMMAND python3 -c "import tensorflow as tf; print(' '.join(tf.sysconfig.get_link_flags()))"
+    COMMAND python3 -c "import sys; import tensorflow as tf; sys.stderr = open('/dev/null', 'w'); print(' '.join(tf.sysconfig.get_link_flags()))"
     OUTPUT_VARIABLE TF_LINK_FLAGS_RAW
-    OUTPUT_STRIP_TRAILING_WHITESPACE
-    ERROR_QUIET)
+    OUTPUT_STRIP_TRAILING_WHITESPACE)
+  message(STATUS "TensorFlow compile flags: ${TF_COMPILE_FLAGS_RAW}")
+  message(STATUS "TensorFlow link flags: ${TF_LINK_FLAGS_RAW}")
   if(TF_COMPILE_FLAGS_RAW AND TF_LINK_FLAGS_RAW)
     separate_arguments(TF_COMPILE_FLAGS UNIX_COMMAND "${TF_COMPILE_FLAGS_RAW}")
     separate_arguments(TF_LINK_FLAGS UNIX_COMMAND "${TF_LINK_FLAGS_RAW}")
