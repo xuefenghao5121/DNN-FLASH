@@ -216,6 +216,70 @@ void test_deferred_wait_mode_preserves_one_dnn_results() {
 #endif
 }
 
+void test_cache_observability_counters() {
+    constexpr std::size_t m = 4;
+    constexpr std::size_t n = 5;
+    constexpr std::size_t d = 3;
+    const auto q = make_values(m * d, 0.3f);
+    const auto k = make_values(n * d, 0.9f);
+    std::vector<float> actual(m * n, 0.0f);
+
+    auto input = base_input();
+    input.requested_score_mod = flashone::ScoreModKind::Scale;
+    input.has_scale = true;
+    input.scale_value = 0.75f;  // unique scale to avoid cache hits from prior tests
+    const auto plan = flashone::make_runtime_plan(input,
+                                                  /*one_dnn_available=*/true,
+                                                  /*one_dnn_post_ops_available=*/true);
+
+    const flashone::StridedMatmulShape shape{/*m=*/m,
+                                             /*n=*/n,
+                                             /*k=*/d,
+                                             /*a_stride_m=*/d,
+                                             /*a_stride_k=*/1,
+                                             /*b_stride_k=*/1,
+                                             /*b_stride_n=*/d,
+                                             /*c_stride_m=*/n,
+                                             /*c_stride_n=*/1};
+    flashone::QkScoreTilePostOpsInput post_ops;
+    flashone::QkScoreTileDebugInfo debug;
+
+    flashone::qk_score_tile_reset_cache_stats();
+    flashone::qk_score_tile_inplace(q.data(), k.data(), actual.data(), shape, plan, post_ops, &debug);
+    auto stats_after_first = flashone::qk_score_tile_get_cache_stats();
+
+#ifdef FLASHONE_HAS_ONEDNN
+    require(stats_after_first.primitive_cache_misses == 1, "first call should be cache miss");
+    require(stats_after_first.primitive_cache_hits == 0, "first call should have no hits");
+    require(stats_after_first.memory_handle_rebinds == 1, "first call should rebind once");
+    require(stats_after_first.immediate_waits == 1, "first call should wait once");
+    require(stats_after_first.deferred_waits == 0, "first call should not defer");
+    require(stats_after_first.cache_size >= 1, "cache should have at least one entry");
+#else
+    require(stats_after_first.primitive_cache_misses == 0, "no oneDNN: no cache misses");
+    require(stats_after_first.cache_size == 0, "no oneDNN: empty cache");
+#endif
+
+    flashone::qk_score_tile_inplace(q.data(), k.data(), actual.data(), shape, plan, post_ops, &debug);
+    auto stats_after_second = flashone::qk_score_tile_get_cache_stats();
+
+#ifdef FLASHONE_HAS_ONEDNN
+    require(stats_after_second.primitive_cache_misses == 1, "second call should still be 1 miss");
+    require(stats_after_second.primitive_cache_hits == 1, "second call should be 1 hit");
+    require(stats_after_second.memory_handle_rebinds == 2, "second call should rebind again");
+    require(stats_after_second.immediate_waits == 2, "second call should wait again");
+#endif
+
+    flashone::qk_score_tile_reset_cache_stats();
+    auto stats_after_reset = flashone::qk_score_tile_get_cache_stats();
+    require(stats_after_reset.primitive_cache_hits == 0, "reset should zero hits");
+    require(stats_after_reset.primitive_cache_misses == 0, "reset should zero misses");
+    require(stats_after_reset.memory_handle_rebinds == 0, "reset should zero rebinds");
+    require(stats_after_reset.immediate_waits == 0, "reset should zero immediate waits");
+    require(stats_after_reset.deferred_waits == 0, "reset should zero deferred waits");
+    // reset only zeros counters, does not clear the primitive cache itself
+}
+
 void test_reference_fallback_for_broadcast_bias() {
     constexpr std::size_t m = 4;
     constexpr std::size_t n = 5;
@@ -263,6 +327,7 @@ int main() {
     test_scale_post_op();
     test_scale_additive_bias_post_op();
     test_deferred_wait_mode_preserves_one_dnn_results();
+    test_cache_observability_counters();
     test_reference_fallback_for_broadcast_bias();
     std::cout << "flashone QK score tile tests passed\n";
     return 0;

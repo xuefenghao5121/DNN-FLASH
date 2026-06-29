@@ -174,6 +174,13 @@ struct ThreadLocalOneDnnQkContext {
     dnnl::stream stream{engine};
     std::map<QkPostOpsPrimitiveKey, CachedQkPostOpsPrimitive> primitive_cache;
     bool has_pending_work{false};
+
+    // Cache observability counters
+    std::size_t cache_hits{0};
+    std::size_t cache_misses{0};
+    std::size_t handle_rebinds{0};
+    std::size_t immediate_waits{0};
+    std::size_t deferred_waits{0};
 };
 
 ThreadLocalOneDnnQkContext& thread_local_qk_context() {
@@ -256,6 +263,9 @@ CachedQkPostOpsPrimitive& get_cached_primitive(ThreadLocalOneDnnQkContext& conte
     if (it == context.primitive_cache.end()) {
         it = context.primitive_cache.emplace(
             key, make_cached_primitive(key, plan, context.engine)).first;
+        ++context.cache_misses;
+    } else {
+        ++context.cache_hits;
     }
     return it->second;
 }
@@ -264,13 +274,15 @@ void bind_execute_memory_handles(CachedQkPostOpsPrimitive& cached,
                                  const float* q,
                                  const float* k,
                                  float* score,
-                                 const QkScoreTilePostOpsInput& post_ops) {
+                                 const QkScoreTilePostOpsInput& post_ops,
+                                 ThreadLocalOneDnnQkContext& context) {
     cached.q_mem.set_data_handle(const_cast<float*>(q));
     cached.k_mem.set_data_handle(const_cast<float*>(k));
     cached.score_mem.set_data_handle(score);
     if (cached.has_bias) {
         cached.bias_mem.set_data_handle(const_cast<float*>(post_ops.additive_bias));
     }
+    ++context.handle_rebinds;
 }
 
 void qk_score_tile_onednn_post_ops_inplace(const float* q,
@@ -288,13 +300,14 @@ void qk_score_tile_onednn_post_ops_inplace(const float* q,
     auto& context = thread_local_qk_context();
     const auto key = make_key(shape, plan, post_ops, apply_bias);
     auto& cached = get_cached_primitive(context, key, plan);
-    bind_execute_memory_handles(cached, q, k, score, post_ops);
+    bind_execute_memory_handles(cached, q, k, score, post_ops, context);
 
     cached.primitive.execute(context.stream, cached.execute_args);
     context.has_pending_work = true;
     if (execute_options.sync_mode == QkScoreTileSyncMode::WaitAfterExecute) {
         context.stream.wait();
         context.has_pending_work = false;
+        ++context.immediate_waits;
     }
 }
 #endif
@@ -307,7 +320,33 @@ void qk_score_tile_wait_for_onednn() {
     if (context.has_pending_work) {
         context.stream.wait();
         context.has_pending_work = false;
+        ++context.deferred_waits;
     }
+#endif
+}
+
+QkScoreTileCacheStats qk_score_tile_get_cache_stats() {
+    QkScoreTileCacheStats stats;
+#ifdef FLASHONE_HAS_ONEDNN
+    auto& context = thread_local_qk_context();
+    stats.primitive_cache_hits = context.cache_hits;
+    stats.primitive_cache_misses = context.cache_misses;
+    stats.memory_handle_rebinds = context.handle_rebinds;
+    stats.immediate_waits = context.immediate_waits;
+    stats.deferred_waits = context.deferred_waits;
+    stats.cache_size = context.primitive_cache.size();
+#endif
+    return stats;
+}
+
+void qk_score_tile_reset_cache_stats() {
+#ifdef FLASHONE_HAS_ONEDNN
+    auto& context = thread_local_qk_context();
+    context.cache_hits = 0;
+    context.cache_misses = 0;
+    context.handle_rebinds = 0;
+    context.immediate_waits = 0;
+    context.deferred_waits = 0;
 #endif
 }
 

@@ -1,7 +1,7 @@
 # FlashOne Stage 1 QK Post-ops Validation Report
 
-> Date: 2026-06-28
-> Scope: Stage 1.2 / Stage 1.3 minimal QK score tile validation.
+> Date: 2026-06-29 (updated)
+> Scope: Stage 1.2 / Stage 1.3 minimal QK score tile validation + Stage 1.10 cache observability.
 > Boundary: C++ QK score-tile level only; this does **not** claim TensorFlow graph/XLA speedup.
 
 ## Environment
@@ -127,8 +127,52 @@ It does not validate:
 - broadcast bias promotion;
 - BRGEMM ukernel post-op main path.
 
+## Stage 1.10 Cache Observability
+
+Stage 1.10 adds cache observability counters to the oneDNN QK post-ops path:
+
+- `QkScoreTileCacheStats` struct exposed via `qk_score_tile_internal.hpp`.
+- `qk_score_tile_get_cache_stats()` / `qk_score_tile_reset_cache_stats()` internal API.
+- Counters: `primitive_cache_hits`, `primitive_cache_misses`, `memory_handle_rebinds`, `immediate_waits`, `deferred_waits`, `cache_size`.
+- Benchmark schema upgraded to `v4`; JSON records now include a `cache_stats` object; CSV includes the six new columns.
+- Test `test_cache_observability_counters` verifies hit/miss/rebind/wait counters across first call, second call, and reset.
+
+Benchmark cache stats observations (warmup=3, repeat=15, `--include-deferred-wait`):
+
+- oneDNN rows show 0 misses during timed repeats (cache populated during warmup).
+- 15 hits per oneDNN record (one tile per repeat, 15 repeats).
+- 15 handle rebinds per oneDNN record (one rebind per tile execute).
+- `wait_after_execute` rows: 15 immediate_waits, 0 deferred_waits.
+- `defer_until_record_end` rows: 0 immediate_waits, 15 deferred_waits (wait happens once per record via `qk_score_tile_wait_for_onednn()`).
+- `cache_size` grows as new shape/score_mod combinations are encountered.
+
+These counters confirm that the primitive cache and memory wrapper reuse from Stage 1.5–1.8 are functioning correctly during benchmark runs, and they provide a foundation for diagnosing whether future performance changes come from cache behavior, handle rebinding, or stream synchronization.
+
 ## Next-stage Recommendation
 
-Proceed to one more short hardening step before XLA ABI work. The best next step is **cache observability / benchmark instrumentation**: expose primitive-cache hit/miss and deferred-wait counters in debug or benchmark-only metadata, so future changes can distinguish primitive creation, memory-handle rebinding, and stream synchronization cost.
+Stage 1.10 adds cache observability instrumentation:
+
+- `QkScoreTileCacheStats` struct exposed via internal header, reporting `primitive_cache_hits`, `primitive_cache_misses`, `memory_handle_rebinds`, `immediate_waits`, `deferred_waits`, and `cache_size`.
+- `qk_score_tile_get_cache_stats()` / `qk_score_tile_reset_cache_stats()` provide query and reset without affecting the primitive cache itself.
+- Benchmark schema upgraded to `v4` with per-record `cache_stats` block.
+- Test `test_cache_observability_counters` verifies hit/miss/rebind/wait counter accuracy across first-call, second-call, and reset.
+
+Cache stats observations from v4 benchmark (oneDNN rows, wait-per-tile, warmup=3, repeat=15):
+
+| Shape | Score mod | Cache hits | Cache misses | Rebinds | Immediate waits | Cache size |
+|---|---|---:|---:|---:|---:|---:|
+| 64x64 D32 | none | 15 | 0 | 15 | 15 | 1 |
+| 64x64 D32 | scale | 15 | 0 | 15 | 15 | 2 |
+| 64x64 D32 | scale+bias | 15 | 0 | 15 | 15 | 3 |
+| 128x128 D64 H1 | none | 15 | 0 | 15 | 15 | 4 |
+| 128x128 D64 H4 | none | 60 | 0 | 60 | 60 | 5 |
+
+Key findings:
+- After warmup, all timed repeats hit the primitive cache (0 misses), confirming the cache key is stable across tiles of the same shape/score_mod.
+- `handle_rebinds` equals the number of oneDNN execute calls, confirming `set_data_handle` is called once per tile.
+- `immediate_waits` equals execute calls for wait-per-tile mode; `deferred_waits` is 0 in that mode.
+- `cache_size` grows incrementally as new shape/score_mod combinations are encountered.
 
 Do not make deferred wait the default public QK tile behavior. If deferred wait is promoted later, it should be used only inside a higher-level internal call boundary that owns all submitted score buffers and can guarantee a final wait before softmax/PV reads them.
+
+Next steps: 1) Evaluate whether per-tile `set_data_handle` overhead is measurable now that hit/miss is observable; 2) Consider batched handle-rebind+execute patterns if rebind cost is significant; 3) Prepare for XLA CustomCall ABI exploration.

@@ -28,7 +28,20 @@ struct QkScoreTileExecuteOptions {
     QkScoreTileSyncMode sync_mode{QkScoreTileSyncMode::WaitAfterExecute};
 };
 
+struct QkScoreTileCacheStats {
+    std::size_t primitive_cache_hits{0};
+    std::size_t primitive_cache_misses{0};
+    std::size_t memory_handle_rebinds{0};
+    std::size_t immediate_waits{0};
+    std::size_t deferred_waits{0};
+    std::size_t cache_size{0};
+};
+
 void qk_score_tile_wait_for_onednn();
+
+QkScoreTileCacheStats qk_score_tile_get_cache_stats();
+
+void qk_score_tile_reset_cache_stats();
 
 void qk_score_tile_inplace_with_options(const float* q,
                                         const float* k,

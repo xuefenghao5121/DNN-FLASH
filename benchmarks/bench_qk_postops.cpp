@@ -65,6 +65,13 @@ struct Record {
     double time_ms_stddev;
     int warmup;
     int repeat;
+    // Cache observability fields
+    std::size_t cache_hits{0};
+    std::size_t cache_misses{0};
+    std::size_t handle_rebinds{0};
+    std::size_t immediate_waits{0};
+    std::size_t deferred_waits{0};
+    std::size_t cache_size{0};
 };
 
 std::vector<float> make_values(std::size_t size, float offset) {
@@ -268,6 +275,8 @@ Record run_record(const ShapeCase& shape,
         execute_once();
     }
 
+    flashone::qk_score_tile_reset_cache_stats();
+
     std::vector<double> samples_ms;
     samples_ms.reserve(static_cast<std::size_t>(repeat));
     for (int i = 0; i < repeat; ++i) {
@@ -277,6 +286,7 @@ Record run_record(const ShapeCase& shape,
         samples_ms.push_back(std::chrono::duration<double, std::milli>(end - start).count());
     }
     const auto stats = summarize_samples(samples_ms);
+    const auto cache_stats = flashone::qk_score_tile_get_cache_stats();
 
     Record record;
     record.shape = shape;
@@ -298,6 +308,12 @@ Record run_record(const ShapeCase& shape,
     record.time_ms_stddev = stats.stddev_ms;
     record.warmup = warmup;
     record.repeat = repeat;
+    record.cache_hits = cache_stats.primitive_cache_hits;
+    record.cache_misses = cache_stats.primitive_cache_misses;
+    record.handle_rebinds = cache_stats.memory_handle_rebinds;
+    record.immediate_waits = cache_stats.immediate_waits;
+    record.deferred_waits = cache_stats.deferred_waits;
+    record.cache_size = cache_stats.cache_size;
     return record;
 }
 
@@ -316,7 +332,7 @@ void write_json(const std::string& path, const std::vector<Record>& records) {
     }
     out << std::fixed << std::setprecision(6);
     out << "{\n";
-    out << "  \"schema\": \"flashone.cpp_qk_postops_benchmark.v3\",\n";
+    out << "  \"schema\": \"flashone.cpp_qk_postops_benchmark.v4\",\n";
     out << "  \"benchmark_level\": \"cpp_qk_score_tile\",\n";
     out << "  \"git_commit\": \"" << git_commit_string() << "\",\n";
     out << "  \"one_dnn_version\": \"" << one_dnn_version_string() << "\",\n";
@@ -347,7 +363,15 @@ void write_json(const std::string& path, const std::vector<Record>& records) {
         out << "      \"time_ms_max\": " << r.time_ms_max << ",\n";
         out << "      \"time_ms_stddev\": " << r.time_ms_stddev << ",\n";
         out << "      \"warmup\": " << r.warmup << ",\n";
-        out << "      \"repeat\": " << r.repeat << "\n";
+        out << "      \"repeat\": " << r.repeat << ",\n";
+        out << "      \"cache_stats\": {\n";
+        out << "        \"primitive_cache_hits\": " << r.cache_hits << ",\n";
+        out << "        \"primitive_cache_misses\": " << r.cache_misses << ",\n";
+        out << "        \"memory_handle_rebinds\": " << r.handle_rebinds << ",\n";
+        out << "        \"immediate_waits\": " << r.immediate_waits << ",\n";
+        out << "        \"deferred_waits\": " << r.deferred_waits << ",\n";
+        out << "        \"cache_size\": " << r.cache_size << "\n";
+        out << "      }\n";
         out << "    }" << (i + 1 == records.size() ? "\n" : ",\n");
     }
     out << "  ]\n";
@@ -363,7 +387,8 @@ void write_csv(const std::string& path, const std::vector<Record>& records) {
     out << "batch,heads,m,n,head_dim,value_dim,requested_backend,actual_backend,qk_layout,"
            "score_mod,sync_mode,lowering_status,fallback_reason,used_onednn_post_ops,max_abs_diff,"
            "time_ms,time_ms_mean,time_ms_median,time_ms_p90,time_ms_min,time_ms_max,"
-           "time_ms_stddev,warmup,repeat\n";
+           "time_ms_stddev,warmup,repeat,cache_hits,cache_misses,handle_rebinds,"
+           "immediate_waits,deferred_waits,cache_size\n";
     out << std::fixed << std::setprecision(6);
     for (const auto& r : records) {
         out << r.shape.batch << ',' << r.shape.heads << ',' << r.shape.m << ',' << r.shape.n
@@ -373,7 +398,9 @@ void write_csv(const std::string& path, const std::vector<Record>& records) {
             << (r.used_onednn_post_ops ? "true" : "false") << ',' << r.max_abs_diff << ','
             << r.time_ms << ',' << r.time_ms_mean << ',' << r.time_ms_median << ','
             << r.time_ms_p90 << ',' << r.time_ms_min << ',' << r.time_ms_max << ','
-            << r.time_ms_stddev << ',' << r.warmup << ',' << r.repeat << '\n';
+            << r.time_ms_stddev << ',' << r.warmup << ',' << r.repeat << ','
+            << r.cache_hits << ',' << r.cache_misses << ',' << r.handle_rebinds << ','
+            << r.immediate_waits << ',' << r.deferred_waits << ',' << r.cache_size << '\n';
     }
 }
 
