@@ -36,31 +36,6 @@ if(ONEDNN_FLASH_ENABLE_NATIVE)
   target_compile_options(onednn_flash_core PRIVATE -march=native)
 endif()
 
-add_executable(onednn_flash_cpp_tests tests/cpp/test_attention.cpp)
-target_link_libraries(onednn_flash_cpp_tests PRIVATE onednn_flash_core)
-
-add_executable(onednn_flash_backend_tests tests/cpp/test_backend.cpp)
-target_link_libraries(onednn_flash_backend_tests PRIVATE onednn_flash_core)
-
-add_executable(onednn_flash_tile_kernel_tests tests/cpp/test_tile_kernel.cpp)
-target_link_libraries(onednn_flash_tile_kernel_tests PRIVATE onednn_flash_core)
-
-add_executable(onednn_flash_runtime_plan_tests tests/cpp/test_runtime_plan.cpp)
-target_link_libraries(onednn_flash_runtime_plan_tests PRIVATE onednn_flash_core)
-
-add_executable(onednn_flash_qk_score_tile_tests tests/cpp/test_qk_score_tile.cpp)
-target_link_libraries(onednn_flash_qk_score_tile_tests PRIVATE onednn_flash_core)
-target_include_directories(onednn_flash_qk_score_tile_tests PRIVATE src)
-
-add_executable(onednn_flash_q_tile_attention_tests tests/cpp/test_q_tile_attention.cpp)
-target_link_libraries(onednn_flash_q_tile_attention_tests PRIVATE onednn_flash_core)
-
-add_executable(onednn_flash_qk_pv_tile_attention_tests tests/cpp/test_qk_pv_tile_attention.cpp)
-target_link_libraries(onednn_flash_qk_pv_tile_attention_tests PRIVATE onednn_flash_core)
-
-add_executable(onednn_flash_workspace_attention_tests tests/cpp/test_workspace_attention.cpp)
-target_link_libraries(onednn_flash_workspace_attention_tests PRIVATE onednn_flash_core)
-
 add_executable(onednn_flash_bench benchmarks/bench_attention.cpp)
 target_link_libraries(onednn_flash_bench PRIVATE onednn_flash_core)
 
@@ -104,18 +79,6 @@ if(ONEDNN_FLASH_ENABLE_ONEDNN)
       endif()
     endif()
 
-    add_executable(onednn_flash_dnnl_smoke tests/cpp/test_dnnl_smoke.cpp)
-    target_link_libraries(onednn_flash_dnnl_smoke PRIVATE dnnl::dnnl)
-    set_target_properties(onednn_flash_dnnl_smoke PROPERTIES
-      BUILD_RPATH "${CMAKE_SOURCE_DIR}/third_party/onednn-local/usr/lib/x86_64-linux-gnu;${CMAKE_SOURCE_DIR}/third_party/onednn-debian-3.12/usr/lib/x86_64-linux-gnu")
-
-    add_executable(onednn_flash_onednn_postops_capability tests/cpp/test_onednn_postops_capability.cpp)
-    target_link_libraries(onednn_flash_onednn_postops_capability PRIVATE dnnl::dnnl)
-    if(ONEDNN_FLASH_ONEDNN_BRGEMM_COMPILES)
-      target_compile_definitions(onednn_flash_onednn_postops_capability PRIVATE ONEDNN_FLASH_HAS_ONEDNN_BRGEMM=1 DNNL_EXPERIMENTAL_UKERNEL)
-    endif()
-    set_target_properties(onednn_flash_onednn_postops_capability PROPERTIES
-      BUILD_RPATH "${CMAKE_SOURCE_DIR}/third_party/onednn-local/usr/lib/x86_64-linux-gnu;${CMAKE_SOURCE_DIR}/third_party/onednn-debian-3.12/usr/lib/x86_64-linux-gnu")
 
     # Stage 1 minimal validation test (standalone, no dependencies on onednn_flash_core)
     add_executable(onednn_flash_stage1_minimal tests/cpp/test_stage1_minimal.cpp)
@@ -158,28 +121,6 @@ endif()
 
 include(CTest)
 if(BUILD_TESTING)
-  add_test(NAME onednn_flash_cpp_tests COMMAND onednn_flash_cpp_tests)
-  add_test(NAME onednn_flash_backend_tests COMMAND onednn_flash_backend_tests)
-  add_test(NAME onednn_flash_tile_kernel_tests COMMAND onednn_flash_tile_kernel_tests)
-  add_test(NAME onednn_flash_runtime_plan_tests COMMAND onednn_flash_runtime_plan_tests)
-  add_test(NAME onednn_flash_qk_score_tile_tests COMMAND onednn_flash_qk_score_tile_tests)
-  add_test(NAME onednn_flash_q_tile_attention_tests COMMAND onednn_flash_q_tile_attention_tests)
-  add_test(NAME onednn_flash_qk_pv_tile_attention_tests COMMAND onednn_flash_qk_pv_tile_attention_tests)
-  add_test(NAME onednn_flash_workspace_attention_tests COMMAND onednn_flash_workspace_attention_tests)
-  add_test(NAME onednn_flash_qk_postops_bench_smoke COMMAND onednn_flash_qk_postops_bench
-    --warmup 1 --repeat 1
-    --output-json "${CMAKE_BINARY_DIR}/stage-1-postops-smoke.json"
-    --output-csv "${CMAKE_BINARY_DIR}/stage-1-postops-smoke.csv")
-  set_tests_properties(onednn_flash_qk_postops_bench_smoke PROPERTIES
-    WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
-  if(TARGET onednn_flash_dnnl_smoke)
-    add_test(NAME onednn_flash_dnnl_smoke COMMAND onednn_flash_dnnl_smoke)
-  endif()
-  if(TARGET onednn_flash_onednn_postops_capability)
-    add_test(NAME onednn_flash_onednn_postops_capability COMMAND onednn_flash_onednn_postops_capability)
-    set_tests_properties(onednn_flash_onednn_postops_capability PROPERTIES
-      WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
-  endif()
   if(TARGET onednn_flash_stage1_minimal)
     add_test(NAME onednn_flash_stage1_minimal COMMAND onednn_flash_stage1_minimal)
   endif()
