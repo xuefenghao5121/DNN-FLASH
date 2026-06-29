@@ -16,3 +16,5 @@ third_party/*/
 !third_party/README.md
 benchmarks/results/
 docs/
+tests/
+.claude/
