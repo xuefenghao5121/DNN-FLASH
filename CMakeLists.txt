@@ -116,6 +116,13 @@ if(FLASHONE_ENABLE_ONEDNN)
     endif()
     set_target_properties(flashone_onednn_postops_capability PROPERTIES
       BUILD_RPATH "${CMAKE_SOURCE_DIR}/third_party/onednn-local/usr/lib/x86_64-linux-gnu;${CMAKE_SOURCE_DIR}/third_party/onednn-debian-3.12/usr/lib/x86_64-linux-gnu")
+
+    # Stage 1 minimal validation test (standalone, no dependencies on flashone_core)
+    add_executable(flashone_stage1_minimal tests/cpp/test_stage1_minimal.cpp)
+    target_link_libraries(flashone_stage1_minimal PRIVATE dnnl::dnnl)
+    set_target_properties(flashone_stage1_minimal PROPERTIES
+      BUILD_RPATH "${CMAKE_SOURCE_DIR}/third_party/onednn-local/usr/lib/x86_64-linux-gnu;${CMAKE_SOURCE_DIR}/third_party/onednn-debian-3.12/usr/lib/x86_64-linux-gnu")
+    message(STATUS "Stage 1 minimal validation test enabled")
   else()
     message(STATUS "oneDNN not found; skipping flashone_dnnl_smoke")
   endif()
@@ -172,5 +179,8 @@ if(BUILD_TESTING)
     add_test(NAME flashone_onednn_postops_capability COMMAND flashone_onednn_postops_capability)
     set_tests_properties(flashone_onednn_postops_capability PROPERTIES
       WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+  endif()
+  if(TARGET flashone_stage1_minimal)
+    add_test(NAME flashone_stage1_minimal COMMAND flashone_stage1_minimal)
   endif()
 endif()
